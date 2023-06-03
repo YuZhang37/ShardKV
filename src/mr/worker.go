@@ -64,7 +64,7 @@ func Worker(mapf func(string, string) []KeyValue,
 
 	for {
 		succeeded := call("Coordinator.GetTask", &args, &reply)
-		fmt.Printf("1 GetTask Reply: taskType: %v, taskId: %v, taskContent: %v\n", reply.TaskType, reply.TaskId, reply.TaskContent)
+		// fmt.Printf("1 GetTask Reply: taskType: %v, taskId: %v, taskContent: %v\n", reply.TaskType, reply.TaskId, reply.TaskContent)
 		if !succeeded {
 			break
 		}

@@ -1,7 +1,7 @@
 package mr
 
 import (
-	"fmt"
+	// "fmt"
 	"log"
 	"net"
 	"net/http"
@@ -54,21 +54,21 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 }
 
 func (c *Coordinator) InitTask(args *InitTaskArgs, reply *InitTaskReply) error {
-	fmt.Println("InitTask is call.")
+	// fmt.Println("InitTask is call.")
 	reply.BucketCount = c.nReduce
 	reply.MapTaskCount = len(c.filenames)
 	return nil
 }
 
 func (c *Coordinator) GetTask(args *GetTaskArgs, reply *GetTaskReply) error {
-	fmt.Println("GetTask is call.")
+	// fmt.Println("GetTask is call.")
 	reply.TaskType = WAIT_TASK
 	c.mu.Lock()
 	if c.taskType == TASK_TYPE_MAP {
-		fmt.Println("mapTaskStatus: ")
-		for i, ele := range c.mapTaskStatus {
-			fmt.Printf("(%v, %v) ", i, ele)
-		}
+		// fmt.Println("mapTaskStatus: ")
+		// for i, ele := range c.mapTaskStatus {
+		// 	fmt.Printf("(%v, %v) ", i, ele)
+		// }
 		for i, ele := range c.mapTaskStatus {
 			if ele == STATUS_NOT_ISSUED || ele == STATUS_FAILED {
 				c.mapTaskStatus[i] = STATUS_ISSUED
@@ -80,10 +80,10 @@ func (c *Coordinator) GetTask(args *GetTaskArgs, reply *GetTaskReply) error {
 		}
 	}
 	if c.taskType == TASK_TYPE_REDUCE {
-		fmt.Println("reduceTaskStatus: ")
-		for i, ele := range c.reduceTaskStatus {
-			fmt.Printf("(%v, %v) ", i, ele)
-		}
+		// fmt.Println("reduceTaskStatus: ")
+		// for i, ele := range c.reduceTaskStatus {
+		// 	fmt.Printf("(%v, %v) ", i, ele)
+		// }
 		for i, ele := range c.reduceTaskStatus {
 			if ele == STATUS_NOT_ISSUED || ele == STATUS_FAILED {
 				c.reduceTaskStatus[i] = STATUS_ISSUED
@@ -98,7 +98,7 @@ func (c *Coordinator) GetTask(args *GetTaskArgs, reply *GetTaskReply) error {
 		go c.timeTask(reply.TaskType, reply.TaskId)
 	}
 	c.mu.Unlock()
-	fmt.Printf("reply: TaskType: %v, TaskId: %v, TaskContent: %v\n", reply.TaskType, reply.TaskId, reply.TaskContent)
+	// fmt.Printf("reply: TaskType: %v, TaskId: %v, TaskContent: %v\n", reply.TaskType, reply.TaskId, reply.TaskContent)
 	return nil
 }
 
@@ -115,13 +115,13 @@ func (c *Coordinator) timeTask(taskType int, taskId int) {
 		}
 	}
 	c.mu.Unlock()
-	fmt.Printf("time goes off: TaskType: %v, TaskId: %v,\n", taskType, taskId)
+	// fmt.Printf("time goes off: TaskType: %v, TaskId: %v,\n", taskType, taskId)
 }
 
 func (c *Coordinator) FinishTask(args *FinishTaskArgs,
 	reply *FinishTaskReply) error {
-	fmt.Println("FinishTask is call.")
-	fmt.Printf("args: TaskType: %v, TaskId: %v, TaskStatus: %v\n", args.TaskType, args.TaskId, args.TaskStatus)
+	// fmt.Println("FinishTask is call.")
+	// fmt.Printf("args: TaskType: %v, TaskId: %v, TaskStatus: %v\n", args.TaskType, args.TaskId, args.TaskStatus)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if args.TaskType == MAP_TASK {
@@ -152,7 +152,7 @@ func (c *Coordinator) FinishTask(args *FinishTaskArgs,
 // start a thread that listens for RPCs from worker.go
 //
 func (c *Coordinator) server() {
-	fmt.Println("Server is running.")
+	// fmt.Println("Server is running.")
 	rpc.Register(c)
 	rpc.HandleHTTP()
 	//l, e := net.Listen("tcp", ":1234")
