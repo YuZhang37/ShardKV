@@ -73,7 +73,7 @@ func (c *Coordinator) GetTask(args *GetTaskArgs, reply *GetTaskReply) error {
 			if ele == STATUS_NOT_ISSUED || ele == STATUS_FAILED {
 				c.mapTaskStatus[i] = STATUS_ISSUED
 				reply.TaskType = MAP_TASK
-				reply.TaskId = i
+				reply.TaskId = i + 1
 				reply.TaskContent = c.filenames[i]
 				break
 			}
@@ -88,15 +88,15 @@ func (c *Coordinator) GetTask(args *GetTaskArgs, reply *GetTaskReply) error {
 			if ele == STATUS_NOT_ISSUED || ele == STATUS_FAILED {
 				c.reduceTaskStatus[i] = STATUS_ISSUED
 				reply.TaskType = REDUCE_TASK
-				reply.TaskId = i
-				reply.TaskContent = strconv.Itoa(i)
+				reply.TaskId = i + 1
+				reply.TaskContent = strconv.Itoa(i + 1)
 				break
 			}
 		}
 	}
-	// if reply.TaskType != WAIT_TASK {
-	// 	go c.timeTask(reply.TaskType, reply.TaskId)
-	// }
+	if reply.TaskType != WAIT_TASK {
+		go c.timeTask(reply.TaskType, reply.TaskId)
+	}
 	c.mu.Unlock()
 	fmt.Printf("reply: TaskType: %v, TaskId: %v, TaskContent: %v\n", reply.TaskType, reply.TaskId, reply.TaskContent)
 	return nil
@@ -106,12 +106,12 @@ func (c *Coordinator) timeTask(taskType int, taskId int) {
 	time.Sleep(time.Duration(c.timeLimit) * time.Second)
 	c.mu.Lock()
 	if taskType == MAP_TASK {
-		if c.mapTaskStatus[taskId] != STATUS_COMPLETED {
-			c.mapTaskStatus[taskId] = STATUS_FAILED
+		if c.mapTaskStatus[taskId-1] != STATUS_COMPLETED {
+			c.mapTaskStatus[taskId-1] = STATUS_FAILED
 		}
 	} else {
-		if c.reduceTaskStatus[taskId] != STATUS_COMPLETED {
-			c.reduceTaskStatus[taskId] = STATUS_FAILED
+		if c.reduceTaskStatus[taskId-1] != STATUS_COMPLETED {
+			c.reduceTaskStatus[taskId-1] = STATUS_FAILED
 		}
 	}
 	c.mu.Unlock()
@@ -126,23 +126,23 @@ func (c *Coordinator) FinishTask(args *FinishTaskArgs,
 	defer c.mu.Unlock()
 	if args.TaskType == MAP_TASK {
 		if args.TaskStatus == COMPLETED_TASK {
-			c.mapTaskStatus[args.TaskId] = STATUS_COMPLETED
+			c.mapTaskStatus[args.TaskId-1] = STATUS_COMPLETED
 			c.finishedMapTasks++
 			if c.finishedMapTasks == len(c.filenames) {
 				c.taskType = TASK_TYPE_REDUCE
 			}
 		} else {
-			c.mapTaskStatus[args.TaskId] = STATUS_FAILED
+			c.mapTaskStatus[args.TaskId-1] = STATUS_FAILED
 		}
 	} else {
 		if args.TaskStatus == COMPLETED_TASK {
-			c.reduceTaskStatus[args.TaskId] = STATUS_COMPLETED
+			c.reduceTaskStatus[args.TaskId-1] = STATUS_COMPLETED
 			c.finishedReduceTasks++
 			if c.finishedReduceTasks == c.nReduce {
 				c.taskType = TASK_TYPE_DONE
 			}
 		} else {
-			c.reduceTaskStatus[args.TaskId] = STATUS_FAILED
+			c.reduceTaskStatus[args.TaskId-1] = STATUS_FAILED
 		}
 	}
 	return nil

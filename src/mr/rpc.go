@@ -33,7 +33,7 @@ type InitTaskReply struct {
 
 const (
 	// for taskType
-	WAIT_TASK   = 0
+	WAIT_TASK   = -1
 	MAP_TASK    = 1
 	REDUCE_TASK = 2
 	NO_TASK     = 3
@@ -45,7 +45,7 @@ const (
 
 type GetTaskArgs struct{}
 type GetTaskReply struct {
-	TaskType    int // 0: wait, 1: map, 2: reduce, ?3: no tasks
+	TaskType    int // -1: wait, 1: map, 2: reduce, ?3: no tasks
 	TaskId      int
 	TaskContent string // filename for map, bucket_no for reduce
 }

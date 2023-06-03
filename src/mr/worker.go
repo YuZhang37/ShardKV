@@ -72,8 +72,6 @@ func Worker(mapf func(string, string) []KeyValue,
 			time.Sleep(time.Second)
 			continue
 		}
-
-		fmt.Printf("2 GetTask Reply: taskType: %v, taskId: %v, taskContent: %v\n", reply.TaskType, reply.TaskId, reply.TaskContent)
 		taskStatus := FAILED_TASK
 
 		if reply.TaskType == MAP_TASK {
@@ -113,7 +111,7 @@ func runMapTask(mapf func(string, string) []KeyValue, filename string, taskId in
 	ofiles := make([]*os.File, bucketCount)
 	fileEncoders := make([]*json.Encoder, bucketCount)
 	for i := 0; i < bucketCount; i++ {
-		oname := fmt.Sprintf("mr-%v-%v", taskId, i)
+		oname := fmt.Sprintf("mr-%v-%v", taskId, i+1)
 		ofiles[i], err = os.Create(oname)
 		if err != nil {
 			log.Fatalf("cannot create %v", oname)
@@ -149,10 +147,10 @@ func runReduceTask(reducef func(string, []string) string, bucket_no string) int 
 
 	kva := []KeyValue{}
 	for i := 0; i < mapTaskCount; i++ {
-		filename := fmt.Sprintf("mr-%v-%v", i, bucket_no)
+		filename := fmt.Sprintf("mr-%v-%v", i+1, bucket_no)
 		file, err := os.Open(filename)
 		if err != nil {
-			log.Fatalf("cannot open %v", file)
+			log.Fatalf("cannot open %v", filename)
 			return FAILED_TASK
 		}
 		dec := json.NewDecoder(file)
