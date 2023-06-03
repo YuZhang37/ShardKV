@@ -47,11 +47,6 @@ var mapTaskCount int
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
-	// Your worker implementation here.
-
-	// uncomment to send the Example RPC to the coordinator.
-	// CallExample()
-
 	initArgs := InitTaskArgs{}
 	initReply := InitTaskReply{}
 
@@ -64,7 +59,6 @@ func Worker(mapf func(string, string) []KeyValue,
 
 	for {
 		succeeded := call("Coordinator.GetTask", &args, &reply)
-		// fmt.Printf("1 GetTask Reply: taskType: %v, taskId: %v, taskContent: %v\n", reply.TaskType, reply.TaskId, reply.TaskContent)
 		if !succeeded {
 			break
 		}
@@ -76,7 +70,8 @@ func Worker(mapf func(string, string) []KeyValue,
 
 		if reply.TaskType == MAP_TASK {
 			taskStatus = runMapTask(mapf, reply.TaskContent, reply.TaskId)
-		} else {
+		}
+		if reply.TaskType == REDUCE_TASK {
 			taskStatus = runReduceTask(reducef, reply.TaskContent)
 		}
 
@@ -89,6 +84,9 @@ func Worker(mapf func(string, string) []KeyValue,
 		replyFinishArgs := FinishTaskReply{}
 
 		call("Coordinator.FinishTask", &finishArgs, &replyFinishArgs)
+		if reply.TaskType == EXIT_TASK {
+			break
+		}
 	}
 
 }

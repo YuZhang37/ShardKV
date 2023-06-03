@@ -36,7 +36,7 @@ const (
 	WAIT_TASK   = -1
 	MAP_TASK    = 1
 	REDUCE_TASK = 2
-	NO_TASK     = 3
+	EXIT_TASK   = 3
 
 	// for finish status
 	COMPLETED_TASK = 1
