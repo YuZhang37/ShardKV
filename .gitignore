@@ -1,3 +1,5 @@
+_test/
+.idea
 pkg/
 api.key
 .api.key.trimmed
