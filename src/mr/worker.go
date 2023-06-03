@@ -1,14 +1,16 @@
 package mr
 
-import "fmt"
-import "log"
-import "net/rpc"
-import "hash/fnv"
-import "time"
-import "os"
-import "io/ioutil"
-import "sort"
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"hash/fnv"
+	"io/ioutil"
+	"log"
+	"net/rpc"
+	"os"
+	"sort"
+	"time"
+)
 
 //
 // Map functions return a slice of KeyValue.
@@ -38,8 +40,6 @@ func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 var bucketCount int
 var mapTaskCount int
-var taskType int
-var taskId int
 
 //
 // main/mrworker.go calls this function.
@@ -52,51 +52,50 @@ func Worker(mapf func(string, string) []KeyValue,
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
 
-	initArgs := GetBucketInfoArgs{}
-	initReply := ReplyGetBucketInfoArgs{}
+	initArgs := InitTaskArgs{}
+	initReply := InitTaskReply{}
 
 	call("Coordinator.InitTask", &initArgs, &initReply)
-	bucketCount = initReply.bucketCount
-	mapTaskCount = initReply.mapTaskCount
+	bucketCount = initReply.BucketCount
+	mapTaskCount = initReply.MapTaskCount
 
 	args := GetTaskArgs{}
-	reply := ReplyGetTaskArgs{}
+	reply := GetTaskReply{}
 
 	for {
 		succeeded := call("Coordinator.GetTask", &args, &reply)
+		fmt.Printf("1 GetTask Reply: taskType: %v, taskId: %v, taskContent: %v\n", reply.TaskType, reply.TaskId, reply.TaskContent)
 		if !succeeded {
 			break
 		}
-		if taskType == WAIT_TASK {
+		if reply.TaskType == WAIT_TASK {
 			time.Sleep(time.Second)
 			continue
 		}
 
-		taskType = reply.taskType
-		taskId = reply.taskId
+		fmt.Printf("2 GetTask Reply: taskType: %v, taskId: %v, taskContent: %v\n", reply.TaskType, reply.TaskId, reply.TaskContent)
+		taskStatus := FAILED_TASK
 
-		taskStatus := -1
-
-		if taskType == MAP_TASK {
-			taskStatus = runMapTask(mapf, reply.taskContent)
+		if reply.TaskType == MAP_TASK {
+			taskStatus = runMapTask(mapf, reply.TaskContent, reply.TaskId)
 		} else {
-			taskStatus = runReduceTask(reducef, reply.taskContent)
+			taskStatus = runReduceTask(reducef, reply.TaskContent)
 		}
 
 		finishArgs := FinishTaskArgs{
-			taskType:   taskType,
-			taskId:     taskId,
-			taskStatus: taskStatus,
+			reply.TaskType,
+			reply.TaskId,
+			taskStatus,
 		}
 
-		replyFinishArgs := ReplyFinishTaskArgs{}
+		replyFinishArgs := FinishTaskReply{}
 
 		call("Coordinator.FinishTask", &finishArgs, &replyFinishArgs)
 	}
 
 }
 
-func runMapTask(mapf func(string, string) []KeyValue, filename string) int {
+func runMapTask(mapf func(string, string) []KeyValue, filename string, taskId int) int {
 	intermediate := []KeyValue{}
 	file, err := os.Open(filename)
 	if err != nil {
@@ -150,7 +149,7 @@ func runReduceTask(reducef func(string, []string) string, bucket_no string) int 
 
 	kva := []KeyValue{}
 	for i := 0; i < mapTaskCount; i++ {
-		filename := fmt.Sprintf("mv-%v-%v", i, bucket_no)
+		filename := fmt.Sprintf("mr-%v-%v", i, bucket_no)
 		file, err := os.Open(filename)
 		if err != nil {
 			log.Fatalf("cannot open %v", file)
@@ -186,7 +185,7 @@ func runReduceTask(reducef func(string, []string) string, bucket_no string) int 
 		fmt.Fprintf(tmpfile, "%v %v\n", kva[i].Key, output)
 		i = j
 	}
-	oFilename := fmt.Sprintf("mv-out-%v", taskId)
+	oFilename := fmt.Sprintf("mr-out-%v", bucket_no)
 	os.Rename(tmpfile.Name(), oFilename)
 	return COMPLETED_TASK
 }

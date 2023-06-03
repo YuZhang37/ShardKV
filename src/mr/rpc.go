@@ -24,6 +24,13 @@ type ExampleReply struct {
 
 // Add your RPC definitions here.
 
+type InitTaskArgs struct{}
+
+type InitTaskReply struct {
+	BucketCount  int
+	MapTaskCount int
+}
+
 const (
 	// for taskType
 	WAIT_TASK   = 0
@@ -37,26 +44,19 @@ const (
 )
 
 type GetTaskArgs struct{}
-type ReplyGetTaskArgs struct {
-	taskType    int // 0: wait, 1: map, 2: reduce, ?3: no tasks
-	taskId      int
-	taskContent string // filename for map, bucket_no for reduce
-}
-
-type GetBucketInfoArgs struct{}
-
-type ReplyGetBucketInfoArgs struct {
-	bucketCount  int
-	mapTaskCount int
+type GetTaskReply struct {
+	TaskType    int // 0: wait, 1: map, 2: reduce, ?3: no tasks
+	TaskId      int
+	TaskContent string // filename for map, bucket_no for reduce
 }
 
 type FinishTaskArgs struct {
-	taskType   int // 1: map, 2: reduce
-	taskId     int
-	taskStatus int // 0: completed, -1: failed
+	TaskType   int // 1: map, 2: reduce
+	TaskId     int
+	TaskStatus int // 1: completed, 2: failed
 }
 
-type ReplyFinishTaskArgs struct{}
+type FinishTaskReply struct{}
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
