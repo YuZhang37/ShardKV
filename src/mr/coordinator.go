@@ -60,7 +60,7 @@ func (c *Coordinator) GetTask(args *GetTaskArgs, reply *GetTaskReply) error {
 			if ele == STATUS_NOT_ISSUED || ele == STATUS_FAILED {
 				c.mapTaskStatus[i] = STATUS_ISSUED
 				reply.TaskType = MAP_TASK
-				reply.TaskId = i + 1
+				reply.TaskId = i
 				reply.TaskContent = c.filenames[i]
 				break
 			}
@@ -71,8 +71,8 @@ func (c *Coordinator) GetTask(args *GetTaskArgs, reply *GetTaskReply) error {
 			if ele == STATUS_NOT_ISSUED || ele == STATUS_FAILED {
 				c.reduceTaskStatus[i] = STATUS_ISSUED
 				reply.TaskType = REDUCE_TASK
-				reply.TaskId = i + 1
-				reply.TaskContent = strconv.Itoa(i + 1)
+				reply.TaskId = i
+				reply.TaskContent = strconv.Itoa(i)
 				break
 			}
 		}
@@ -94,13 +94,13 @@ func (c *Coordinator) timeTask(taskType int, taskId int) {
 	time.Sleep(time.Duration(c.timeLimit) * time.Second)
 	c.mu.Lock()
 	if taskType == MAP_TASK {
-		if c.mapTaskStatus[taskId-1] != STATUS_COMPLETED {
-			c.mapTaskStatus[taskId-1] = STATUS_FAILED
+		if c.mapTaskStatus[taskId] != STATUS_COMPLETED {
+			c.mapTaskStatus[taskId] = STATUS_FAILED
 		}
 	}
 	if taskType == REDUCE_TASK {
-		if c.reduceTaskStatus[taskId-1] != STATUS_COMPLETED {
-			c.reduceTaskStatus[taskId-1] = STATUS_FAILED
+		if c.reduceTaskStatus[taskId] != STATUS_COMPLETED {
+			c.reduceTaskStatus[taskId] = STATUS_FAILED
 		}
 	}
 	if taskType == TASK_TYPE_EXIT_WORKER {
@@ -122,25 +122,25 @@ func (c *Coordinator) FinishTask(args *FinishTaskArgs,
 	defer c.mu.Unlock()
 	if args.TaskType == MAP_TASK {
 		if args.TaskStatus == COMPLETED_TASK {
-			c.mapTaskStatus[args.TaskId-1] = STATUS_COMPLETED
+			c.mapTaskStatus[args.TaskId] = STATUS_COMPLETED
 			c.finishedMapTasks++
 			if c.finishedMapTasks == len(c.filenames) {
 				c.taskType = TASK_TYPE_REDUCE
 			}
 		} else {
-			c.mapTaskStatus[args.TaskId-1] = STATUS_FAILED
+			c.mapTaskStatus[args.TaskId] = STATUS_FAILED
 		}
 	}
 	if args.TaskType == REDUCE_TASK {
 		if args.TaskStatus == COMPLETED_TASK {
-			c.reduceTaskStatus[args.TaskId-1] = STATUS_COMPLETED
+			c.reduceTaskStatus[args.TaskId] = STATUS_COMPLETED
 			c.finishedReduceTasks++
 			if c.finishedReduceTasks == c.nReduce {
 				c.taskType = TASK_TYPE_EXIT_WORKER
 				go c.timeExit()
 			}
 		} else {
-			c.reduceTaskStatus[args.TaskId-1] = STATUS_FAILED
+			c.reduceTaskStatus[args.TaskId] = STATUS_FAILED
 		}
 	}
 
@@ -153,9 +153,7 @@ func (c *Coordinator) FinishTask(args *FinishTaskArgs,
 	return nil
 }
 
-//
 // start a thread that listens for RPCs from worker.go
-//
 func (c *Coordinator) server() {
 	rpc.Register(c)
 	rpc.HandleHTTP()
@@ -169,10 +167,8 @@ func (c *Coordinator) server() {
 	go http.Serve(l, nil)
 }
 
-//
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
-//
 func (c *Coordinator) Done() bool {
 
 	c.mu.Lock()
@@ -181,11 +177,9 @@ func (c *Coordinator) Done() bool {
 	return ret
 }
 
-//
 // create a Coordinator.
 // main/mrcoordinator.go calls this function.
 // nReduce is the number of reduce tasks to use.
-//
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
 	c.timeLimit = 10

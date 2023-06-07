@@ -12,18 +12,14 @@ import (
 	"time"
 )
 
-//
 // Map functions return a slice of KeyValue.
-//
 type KeyValue struct {
 	Key   string
 	Value string
 }
 
-//
 // use ihash(key) % NReduce to choose the reduce
 // task number for each KeyValue emitted by Map.
-//
 func ihash(key string) int {
 	h := fnv.New32a()
 	h.Write([]byte(key))
@@ -41,9 +37,7 @@ func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 var bucketCount int
 var mapTaskCount int
 
-//
 // main/mrworker.go calls this function.
-//
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
@@ -54,10 +48,9 @@ func Worker(mapf func(string, string) []KeyValue,
 	bucketCount = initReply.BucketCount
 	mapTaskCount = initReply.MapTaskCount
 
-	args := GetTaskArgs{}
-	reply := GetTaskReply{}
-
 	for {
+		args := GetTaskArgs{}
+		reply := GetTaskReply{}
 		succeeded := call("Coordinator.GetTask", &args, &reply)
 		if !succeeded {
 			break
@@ -109,7 +102,7 @@ func runMapTask(mapf func(string, string) []KeyValue, filename string, taskId in
 	ofiles := make([]*os.File, bucketCount)
 	fileEncoders := make([]*json.Encoder, bucketCount)
 	for i := 0; i < bucketCount; i++ {
-		oname := fmt.Sprintf("mr-%v-%v", taskId, i+1)
+		oname := fmt.Sprintf("mr-%v-%v", taskId, i)
 		ofiles[i], err = os.Create(oname)
 		if err != nil {
 			log.Fatalf("cannot create %v", oname)
@@ -142,10 +135,9 @@ func runReduceTask(reducef func(string, []string) string, bucket_no string) int 
 	// need to bookkeep machine info in coordinator, and pass this info
 	// to reduce task, so the reduce worker can contact the machines and
 	// get corresponding files
-
 	kva := []KeyValue{}
 	for i := 0; i < mapTaskCount; i++ {
-		filename := fmt.Sprintf("mr-%v-%v", i+1, bucket_no)
+		filename := fmt.Sprintf("mr-%v-%v", i, bucket_no)
 		file, err := os.Open(filename)
 		if err != nil {
 			log.Fatalf("cannot open %v", filename)
@@ -186,11 +178,9 @@ func runReduceTask(reducef func(string, []string) string, bucket_no string) int 
 	return COMPLETED_TASK
 }
 
-//
 // example function to show how to make an RPC call to the coordinator.
 //
 // the RPC argument and reply types are defined in rpc.go.
-//
 func CallExample() {
 
 	// declare an argument structure.
@@ -209,11 +199,9 @@ func CallExample() {
 	fmt.Printf("reply.Y %v\n", reply.Y)
 }
 
-//
 // send an RPC request to the coordinator, wait for the response.
 // usually returns true.
 // returns false if something goes wrong.
-//
 func call(rpcname string, args interface{}, reply interface{}) bool {
 	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
 	sockname := coordinatorSock()
