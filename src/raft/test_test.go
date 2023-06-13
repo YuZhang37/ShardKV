@@ -97,6 +97,7 @@ func TestManyElections2A(t *testing.T) {
 
 	iters := 10
 	for ii := 1; ii < iters; ii++ {
+		fmt.Printf("\n\niteration: %v\n", ii)
 		// disconnect three nodes
 		i1 := rand.Int() % servers
 		i2 := rand.Int() % servers
@@ -104,17 +105,24 @@ func TestManyElections2A(t *testing.T) {
 		cfg.disconnect(i1)
 		cfg.disconnect(i2)
 		cfg.disconnect(i3)
+		fmt.Printf("disconnected: %v, %v, %v\n", i1, i2, i3)
 
 		// either the current leader should still be alive,
 		// or the remaining four should elect a new one.
+		// time.Sleep(2 * RaftElectionTimeout)
+		fmt.Println("checking leader...")
 		cfg.checkOneLeader()
+		fmt.Println("checking leader passed!")
 
 		cfg.connect(i1)
 		cfg.connect(i2)
 		cfg.connect(i3)
+		fmt.Printf("reconnected: %v, %v, %v\n", i1, i2, i3)
 	}
-
+	// time.Sleep(2 * RaftElectionTimeout)
+	fmt.Println("checking leader...")
 	cfg.checkOneLeader()
+	fmt.Println("checking leader passed!")
 
 	cfg.end()
 }
@@ -142,10 +150,8 @@ func TestBasicAgree2B(t *testing.T) {
 	cfg.end()
 }
 
-//
 // check, based on counting bytes of RPCs, that
 // each command is sent to each peer just once.
-//
 func TestRPCBytes2B(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false, false)
@@ -705,7 +711,6 @@ func TestPersist32C(t *testing.T) {
 	cfg.end()
 }
 
-//
 // Test the scenarios described in Figure 8 of the extended Raft paper. Each
 // iteration asks a leader, if there is one, to insert a command in the Raft
 // log.  If there is a leader, that leader will fail quickly with a high
@@ -714,7 +719,6 @@ func TestPersist32C(t *testing.T) {
 // alive servers isn't enough to form a majority, perhaps start a new server.
 // The leader in a new term may try to finish replicating log entries that
 // haven't been committed yet.
-//
 func TestFigure82C(t *testing.T) {
 	servers := 5
 	cfg := make_config(t, servers, false, false)
