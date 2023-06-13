@@ -112,6 +112,10 @@ func (rf *Raft) SendAppendEntries(server int, ch chan AppendEntriesReply) {
 	ok := rf.peers[server].Call("Raft.AppendEntries", &args, &reply)
 	if !ok {
 		// log.Printf("Server %v RPC request vote to %v failed!\n", rf.me, server)
+		reply.Term = 0
+		reply.Success = false
+		reply.HigherTerm = false
+		reply.Server = server
 	}
 	ch <- reply
 }
@@ -183,7 +187,6 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, ch chan Reque
 	reply := RequestVoteReply{}
 	ok := rf.peers[server].Call("Raft.RequestVote", args, &reply)
 	if !ok {
-		// log.Printf("Server %v RPC request vote to %v failed!\n", rf.me, server)
 		reply.Server = server
 		reply.Term = 0
 		reply.VoteGranted = false
@@ -196,12 +199,11 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, ch chan Reque
 func (rf *Raft) ticker() {
 	// rand.Seed(time.Now().Unix())
 	rand.Seed(int64(rf.me))
-	randomTime := rand.Intn(rf.randomRange)
 	for !rf.killed() {
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
-
+		randomTime := rand.Intn(rf.randomRange)
 		time.Sleep(time.Duration((randomTime + rf.eleTimeOut)) *
 			time.Millisecond)
 		rf.mu.Lock()
@@ -288,6 +290,12 @@ func (rf *Raft) Election(timeout int) {
 			log.Printf("%v doesn't grant vote to %v at term %v\n", reply.Server, rf.me, term)
 		}
 		if countVotes >= len(rf.peers)/2+1 {
+			//unblock the sendRequestVote gorountines
+			go func(count int) {
+				for i := 0; i < count; i++ {
+					<-ch
+				}
+			}(len(rf.peers) - 1 - i - 1)
 			break
 		}
 	}
@@ -315,6 +323,11 @@ func (rf *Raft) Election(timeout int) {
 		}
 		log.Printf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
 	} else {
+		/*
+			only when the candidate can't get the majority of the votes
+			it needs to update the term with the highest one ever seen,
+			when the leader issues the first hearbeats, and get response from the servers with higher term, this leader will be back to follower.
+		*/
 		if highestTerm > rf.currentTerm {
 			rf.currentTerm = highestTerm
 		}
