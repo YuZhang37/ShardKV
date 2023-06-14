@@ -314,6 +314,7 @@ func (rf *Raft) Election(timeout int) {
 			}
 			rf.nextIndices[i] = len(rf.log) + 1
 			rf.matchIndices[i] = 0
+			rf.liveThreads[i] = false
 		}
 		for i := 0; i < len(rf.peers); i++ {
 			if i == rf.me {
@@ -366,6 +367,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	rf.nextIndices = make([]int, len(rf.peers))
 	rf.matchIndices = make([]int, len(rf.peers))
+	rf.liveThreads = make([]bool, len(rf.peers))
 
 	rf.hbTimeOut = HBTIMEOUT
 	rf.eleTimeOut = ELETIMEOUT
@@ -396,10 +398,247 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
 	term := -1
 	isLeader := true
+	if !rf.isLeader() {
+		return index, term, isLeader
+	}
 
-	// Your code here (2B).
+	//append to the leader's local log
+	rf.mu.Lock()
+	entry := LogEntry{
+		Term:    rf.currentTerm,
+		Index:   len(rf.log) + 1,
+		Command: command,
+	}
+	rf.log = append(rf.log, entry)
+	numOfPeers := len(rf.peers)
 
+	ch0 := make(chan AppendEntriesReply)
+	for i := 0; i < numOfPeers; i++ {
+		if i == rf.me {
+			continue
+		}
+		ch := make(chan AppendEntriesReply)
+		// retry will check liveThreads
+		// there could be many outstanding appendEntries to the
+		// same server issued by Start()
+		rf.liveThreads[i] = true
+		// the args.entries to send may be longer than this new entry
+		// doesn't matter, AppendEntries will handle them
+		go rf.SendAppendEntries2(i, ch)
+		// if harvest doesn't retry on failure, returns false reply
+		go rf.HarvestAppendEntriesReply2(ch0, ch)
+
+	}
+	rf.mu.Unlock()
+	successCount := 1
+	quitChan := make(chan int)
+
+	timerChan := make(chan int)
+	go rf.CheckCommitTimeOut(entry.Index, timerChan)
+
+	for i := 0; i < numOfPeers-1; i++ {
+		reply := <-ch0
+		rf.mu.Lock()
+		if reply.Success {
+			successCount++
+			rf.matchIndices[reply.Server] = entry.Index
+			rf.nextIndices[reply.Server] = entry.Index + 1
+		} else {
+			rf.role = FOLLOWER
+			// stop all retries, stop heartbeat, stop handlesuccessRetry
+			quitChan <- 1
+
+		}
+
+		if successCount > numOfPeers/2 {
+			rf.commitIndex = entry.Index
+			// just update matchIndices and nextIndices
+			go rf.HandleSuccessRetry(i+1, ch0, quitChan)
+			rf.mu.Unlock()
+			break
+		}
+		rf.mu.Unlock()
+	}
+	go rf.ApplyCommand()
 	return index, term, isLeader
+}
+
+func (rf *Raft) CheckCommitTimeOut(targetIndex int, ch chan int) {
+	// timeout to check if targetIndex is committed or not
+	// the goal is that if the targetIndex has committed,
+	// reply to the client
+	stillRetry := true
+
+	for stillRetry {
+		rf.mu.Lock()
+		for i := 0; i < len(rf.liveThreads); i++ {
+			if rf.liveThreads[i] {
+				stillRetry = true
+			}
+		}
+		if rf.commitIndex > targetIndex {
+			stillRetry = false
+		}
+		time.Sleep(time.Duration(CCTIMEOUT) * time.Microsecond)
+		ch <- 1
+	}
+}
+
+func (rf *Raft) AppendEntries2(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	// the reply's term may be less than leader's
+	reply.Server = rf.me
+	reply.Term = rf.currentTerm
+	if rf.currentTerm > args.Term {
+		// leader contacts one server with higher term
+		reply.Success = false
+		reply.HigherTerm = true
+		reply.MisMatched = false
+		return
+	}
+
+	// follower or candidate or leader with smaller term (≤ args.Term)
+	rf.currentTerm = args.Term
+	rf.role = FOLLOWER
+	rf.currentLeader = args.LeaderId
+	rf.msgReceived = true
+
+	reply.HigherTerm = false
+
+	if len(rf.log) < args.PrevLogIndex {
+		// log doesn't contain an entry at PrevLogIndex
+		reply.Success = false
+		reply.MisMatched = true
+		return
+	}
+
+	if rf.log[args.PrevLogIndex-1].Term != args.PrevLogTerm {
+		// log entry at PrevLogIndex doesn't equal to PrevLogTerm
+		reply.Success = false
+		reply.MisMatched = true
+		return
+	}
+
+	// the server's log matches leader's log up through PrevLogIndex
+	// now appends new entries to the server's log
+	i, j := args.PrevLogIndex, 0
+	for i < len(rf.log) && j < len(args.Entries) {
+		if rf.log[i].Term != args.Entries[j].Term {
+			rf.log[i] = args.Entries[j]
+		}
+		i, j = i+1, j+1
+	}
+
+	if i < len(rf.log) {
+		// removing unmatched trailing log entries in the server
+		rf.log = rf.log[:i]
+	}
+
+	for j < len(args.Entries) {
+		// append new log entries to the server's log
+		rf.log = append(rf.log, args.Entries[j])
+		j++
+	}
+
+	leaderCommitIndex := args.LeaderCommitIndex
+	if len(rf.log) < leaderCommitIndex {
+		leaderCommitIndex = len(rf.log)
+	}
+	if rf.commitIndex < leaderCommitIndex {
+		rf.commitIndex = leaderCommitIndex
+	}
+	reply.Success = true
+	reply.HigherTerm = false
+	reply.MisMatched = false
+
+}
+
+func (rf *Raft) SendAppendEntries2(server int, ch chan AppendEntriesReply) {
+	// heartbeat will be empty entries
+	// appendEntries will log[rf.nextIndices[server]-1:]
+	rf.mu.Lock()
+	prevLogIndex := 0
+	prevLogTerm := 0
+	entries := make([]LogEntry, 0)
+	next := rf.nextIndices[server]
+	if next > 1 {
+		// next is at least to be 1, >1 means there is a previous entry
+		prevLogIndex = rf.log[next-2].Index
+		prevLogTerm = rf.log[next-2].Term
+		// for i := next - 1; i < len(rf.log); i++ {
+		// 	entries = append(entries, rf.log[i])
+		// }
+		entries = rf.log[next-1:]
+	}
+
+	args := AppendEntriesArgs{
+		Term:              rf.currentTerm,
+		LeaderId:          rf.me,
+		PrevLogIndex:      prevLogIndex,
+		PrevLogTerm:       prevLogTerm,
+		Entries:           entries,
+		LeaderCommitIndex: rf.commitIndex,
+	}
+	rf.mu.Unlock()
+	reply := AppendEntriesReply{}
+	ok := rf.peers[server].Call("Raft.AppendEntries", &args, &reply)
+	if !ok {
+		// log.Printf("Server %v RPC request vote to %v failed!\n", rf.me, server)
+		reply.Term = 0
+		reply.Success = false
+		reply.HigherTerm = false
+		reply.Server = server
+		reply.MisMatched = false
+	}
+	ch <- reply
+}
+
+func (rf *Raft) HarvestAppendEntriesReply2(sendReplyChan, replyChan chan AppendEntriesReply) {
+	reply := <-replyChan
+	if rf.killed() || !rf.isLeader() {
+		return
+	}
+	// only deals with heartbeats
+	if !reply.Success && reply.HigherTerm {
+		rf.mu.Lock()
+		rf.currentTerm = reply.Term
+		rf.role = FOLLOWER
+		rf.msgReceived = false
+		rf.currentLeader = -1
+		rf.mu.Unlock()
+
+	}
+}
+
+func (rf *Raft) HandleSuccessTrailingRetry(finished int, ch0 chan AppendEntriesReply) {
+	// just update matchIndices and nextIndices
+
+}
+
+func (rf *Raft) ApplyCommand() {
+	rf.mu.Lock()
+	lastApplied := rf.lastApplied
+	commitIndex := rf.commitIndex
+	rf.mu.Unlock()
+	i := lastApplied
+	for i < commitIndex {
+		msg := ApplyMsg{
+			CommandValid: true,
+			Command:      rf.log[i], //committed logs will never be changed, no need for locks
+			CommandIndex: i + 1,
+		}
+		rf.applyCh <- msg
+		rf.mu.Lock()
+		// i + 1
+		if rf.lastApplied < i+1 {
+			rf.lastApplied = i + 1
+			i++
+		} else {
+			i = rf.lastApplied
+		}
+		rf.mu.Unlock()
+	}
 }
 
 // save Raft's persistent state to stable storage,

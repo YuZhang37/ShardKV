@@ -17,7 +17,7 @@ import (
 type ApplyMsg struct {
 	CommandValid bool
 	Command      interface{}
-	CommandIndex int // for de-duplication?
+	CommandIndex int // index of the log for de-duplication on sending to the state machine
 
 	// For 2D:
 	SnapshotValid bool
@@ -42,9 +42,11 @@ const (
 )
 
 const (
-	HBTIMEOUT   int = 200
-	ELETIMEOUT  int = 1000
-	RANDOMRANGE int = 1000
+	HBTIMEOUT    int = 200
+	ELETIMEOUT   int = 1000
+	RANDOMRANGE  int = 1000
+	CCTIMEOUT    int = 5
+	REAPPTIMEOUT int = 10
 )
 
 type LogEntry struct {
@@ -95,6 +97,31 @@ type Raft struct {
 	// states on leader
 	nextIndices  []int
 	matchIndices []int
+	liveThreads  []bool
+	/*
+		liveThreads  []bool
+		can't simply de-duplicate like this:
+
+		scenario 1:
+		thread 1: start(comm1) failed on some machines, no majority
+		thread 2: start(comm2) failed on some machines, no majority
+		if only retries on thread 1,
+		thread 2 will never get the majority and proceed,
+		although thread 1 can commit comm2,
+
+		solution:
+		constantly checking if comm2 is committed by the leader
+		if so, replies to the client
+		use a different channel from a different thread
+		checking every 10ms
+
+		thread 1 may commit the entry for thread 2
+		vice versa
+
+		another design:
+		for failed server, don't try infinitely if the majority has
+		responded successfully
+	*/
 
 	// timeout fields
 	hbTimeOut   int
@@ -132,8 +159,9 @@ type AppendEntriesArgs struct {
 }
 
 type AppendEntriesReply struct {
+	Server     int
 	Term       int
 	Success    bool
-	Server     int
 	HigherTerm bool
+	MisMatched bool
 }
