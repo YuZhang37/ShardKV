@@ -138,7 +138,7 @@ func (cfg *config) checkLogs(i int, m ApplyMsg) (string, bool) {
 	v := m.Command
 	for j := 0; j < len(cfg.logs); j++ {
 		if old, oldok := cfg.logs[j][m.CommandIndex]; oldok && old != v {
-			log.Printf("%v: log %v; server %v\n", i, cfg.logs[i], cfg.logs[j])
+			DPrintf("%v: log %v; server %v\n", i, cfg.logs[i], cfg.logs[j])
 			// some server has already committed a different value for this entry!
 			err_msg = fmt.Sprintf("commit index=%v server=%v %v != server=%v %v",
 				m.CommandIndex, i, m.Command, j, old)
@@ -474,10 +474,10 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 		cfg.rafts[i].mu.Unlock()
 		cfg.mu.Unlock()
 
-		// log.Printf("server %v takes %v as a leader\n", i, leader)
-		// log.Printf("server %v log is %v\n", i, cfg.rafts[i].log)
-		// log.Printf("server %v commit index is %v\n", i, cfg.rafts[i].commitIndex)
-		log.Printf("cmd1: %v, ok: %v\n", cmd1, ok)
+		// DPrintf("server %v takes %v as a leader\n", i, leader)
+		// DPrintf("server %v log is %v\n", i, cfg.rafts[i].log)
+		// DPrintf("server %v commit index is %v\n", i, cfg.rafts[i].commitIndex)
+		DPrintf("cmd1: %v, ok: %v\n", cmd1, ok)
 		if ok {
 			if count > 0 && cmd != cmd1 {
 				cfg.t.Fatalf("committed values do not match: index %v, %v, %v\n",
@@ -528,12 +528,12 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 		if index != -1 {
 			// somebody claimed to be the leader and to have
 			// submitted our command; wait a while for agreement.
-			log.Printf("%v got appended at %v\n", cmd, index)
+			DPrintf("%v got appended at %v\n", cmd, index)
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
-				log.Printf("%v servers think %v is committed.\n", nd, cmd1)
-				log.Printf("cmd1: %v, cmd: %v\n", cmd1, cmd)
+				DPrintf("%v servers think %v is committed.\n", nd, cmd1)
+				DPrintf("cmd1: %v, cmd: %v\n", cmd1, cmd)
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd1 == cmd {

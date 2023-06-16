@@ -45,8 +45,8 @@ const (
 	HBTIMEOUT          int = 200
 	ELETIMEOUT         int = 1000
 	RANDOMRANGE        int = 1000
-	CHECKCOMMITTIMEOUT int = 5
-	REAPPENDTIMEOUT    int = 10
+	CHECKCOMMITTIMEOUT int = 25
+	REAPPENDTIMEOUT    int = 50
 )
 
 const (
