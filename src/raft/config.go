@@ -427,38 +427,6 @@ func (cfg *config) checkNoLeader() {
 	}
 }
 
-// how many servers think a log entry is committed?
-func (cfg *config) nCommitted(index int) (int, interface{}) {
-	count := 0
-	var cmd interface{} = nil
-	for i := 0; i < len(cfg.rafts); i++ {
-		if cfg.applyErr[i] != "" {
-			cfg.t.Fatal(cfg.applyErr[i])
-		}
-
-		cfg.mu.Lock()
-		cmd1, ok := cfg.logs[i][index]
-		cfg.rafts[i].mu.Lock()
-		leader := cfg.rafts[i].currentLeader
-		cfg.rafts[i].mu.Unlock()
-		cfg.mu.Unlock()
-
-		log.Printf("server %v takes %v as a leader\n", i, leader)
-		log.Printf("server %v log is %v\n", i, cfg.rafts[i].log)
-		log.Printf("server %v commit index is %v\n", i, cfg.rafts[i].commitIndex)
-		log.Printf("cmd1: %v, ok: %v\n", cmd1, ok)
-		if ok {
-			if count > 0 && cmd != cmd1 {
-				cfg.t.Fatalf("committed values do not match: index %v, %v, %v\n",
-					index, cmd, cmd1)
-			}
-			count += 1
-			cmd = cmd1
-		}
-	}
-	return count, cmd
-}
-
 // wait for at least n servers to commit.
 // but don't wait forever.
 func (cfg *config) wait(index int, n int, startTerm int) interface{} {
@@ -488,6 +456,38 @@ func (cfg *config) wait(index int, n int, startTerm int) interface{} {
 			nd, index, n)
 	}
 	return cmd
+}
+
+// how many servers think a log entry is committed?
+func (cfg *config) nCommitted(index int) (int, interface{}) {
+	count := 0
+	var cmd interface{} = nil
+	for i := 0; i < len(cfg.rafts); i++ {
+		if cfg.applyErr[i] != "" {
+			cfg.t.Fatal(cfg.applyErr[i])
+		}
+
+		cfg.mu.Lock()
+		cmd1, ok := cfg.logs[i][index]
+		cfg.rafts[i].mu.Lock()
+		// leader := cfg.rafts[i].currentLeader
+		cfg.rafts[i].mu.Unlock()
+		cfg.mu.Unlock()
+
+		// log.Printf("server %v takes %v as a leader\n", i, leader)
+		// log.Printf("server %v log is %v\n", i, cfg.rafts[i].log)
+		// log.Printf("server %v commit index is %v\n", i, cfg.rafts[i].commitIndex)
+		log.Printf("cmd1: %v, ok: %v\n", cmd1, ok)
+		if ok {
+			if count > 0 && cmd != cmd1 {
+				cfg.t.Fatalf("committed values do not match: index %v, %v, %v\n",
+					index, cmd, cmd1)
+			}
+			count += 1
+			cmd = cmd1
+		}
+	}
+	return count, cmd
 }
 
 // do a complete agreement.
@@ -533,6 +533,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
 				log.Printf("%v servers think %v is committed.\n", nd, cmd1)
+				log.Printf("cmd1: %v, cmd: %v\n", cmd1, cmd)
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd1 == cmd {

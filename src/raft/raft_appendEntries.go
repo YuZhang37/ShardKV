@@ -7,6 +7,28 @@ import (
 	//	"6.824/labgob"
 )
 
+/* tests
+TestBasicAgree2B			:	pass
+TestRPCBytes2B				:	pass
+TestFailAgree2B				: 	fail-failed to reach agreement
+TestFailNoAgree2B			:	fail-infinite loop
+TestConcurrentStarts2B		:	pass
+TestRejoin2B				:	fail-infinite loop
+TestBackup2B				:	fail-infinite loop
+TestCount2B					:	pass
+*/
+
+// for heartbeat: send and harvest is 1 on 1, and send part definitely sends to the channel, no need for stopChan
+func (rf *Raft) HeartBeat(server int) {
+	replyChan := make(chan AppendEntriesReply)
+	for !rf.killed() && rf.isLeader() {
+		go rf.SendAppendEntries(server, -1, replyChan)
+		go rf.HarvestHeartbeatReply(replyChan)
+		time.Sleep(time.Duration(rf.hbTimeOut) * time.Millisecond)
+	}
+
+}
+
 func (rf *Raft) HarvestHeartbeatReply(replyChan chan AppendEntriesReply) {
 	reply := <-replyChan
 	if rf.killed() || !rf.isLeader() {
@@ -22,17 +44,6 @@ func (rf *Raft) HarvestHeartbeatReply(replyChan chan AppendEntriesReply) {
 		rf.mu.Unlock()
 
 	}
-}
-
-// for heartbeat: send and harvest is 1 on 1, and send part definitely sends to the channel, no need for stopChan
-func (rf *Raft) HeartBeat(server int) {
-	replyChan := make(chan AppendEntriesReply)
-	for !rf.killed() && rf.isLeader() {
-		go rf.SendAppendEntries2(server, -1, replyChan)
-		go rf.HarvestHeartbeatReply(replyChan)
-		time.Sleep(time.Duration(rf.hbTimeOut) * time.Millisecond)
-	}
-
 }
 
 // the service using Raft (e.g. a k/v server) wants to start
@@ -52,12 +63,18 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	term := -1
 	isLeader := false
 	if !rf.isLeader() {
-		log.Printf("Command sends to %v, which is not a leader, the leader is %v\n", rf.me, rf.currentLeader)
+		rf.mu.Lock()
+		currentLeader := rf.currentLeader
+		rf.mu.Unlock()
+		log.Printf("Command sends to %v, which is not a leader, the leader is %v\n", rf.me, currentLeader)
 		return index, term, isLeader
 	}
 
+	rf.mu.Lock()
+	nextIndices := rf.nextIndices
+	rf.mu.Unlock()
 	log.Printf("Command sends to %v, which is a leader\n", rf.me)
-	log.Printf("the next indices are: %v\n", rf.nextIndices)
+	log.Printf("the next indices are: %v\n", nextIndices)
 	log.Printf("Start processing...\n")
 	//append to the leader's local log
 	rf.mu.Lock()
@@ -86,8 +103,8 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		// same server issued by Start(comm1) and Start(comm2)
 		// the args.entries to send may be longer than this new entry
 		// doesn't matter, AppendEntries will handle them
-		go rf.SendAppendEntries2(i, entry.Index, ch)
-		go rf.HarvestAppendEntriesReply2(entry.Index, ch0, stopChans[i], ch)
+		go rf.SendAppendEntries(i, entry.Index, ch)
+		go rf.HarvestAppendEntriesReply(entry.Index, ch0, stopChans[i], ch)
 
 	}
 
@@ -233,48 +250,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	return index, term, isLeader
 }
 
-/*
-even leader turns to follower or server is killed
-we can still update the commitIndex since they are volatile
-before a new leader is elected
-*/
-func (rf *Raft) updateCommit() {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	smallestIndex := len(rf.log)
-	for i := 0; i < len(rf.peers); i++ {
-		if i == rf.me {
-			continue
-		}
-		if rf.matchIndices[i] < smallestIndex {
-			smallestIndex = rf.matchIndices[i]
-		}
-	}
-	if smallestIndex != 0 && rf.log[smallestIndex-1].Term == rf.currentTerm && rf.commitIndex < smallestIndex {
-		rf.commitIndex = smallestIndex
-	}
-}
-
-/*
-don't check !rf.killed() && rf.isLeader()
-the Start() thread checks the leader validation,
-timer should quit after receiving loop in Start()
-*/
-func (rf *Raft) CheckCommitTimeOut(quitChan chan int, timerChan chan int) {
-
-	quit := false
-	for !quit {
-		time.Sleep(time.Duration(CHECKCOMMITTIMEOUT) * time.Microsecond)
-		select {
-		case <-quitChan:
-			quit = true
-		case timerChan <- 1:
-
-		}
-	}
-}
-
-func (rf *Raft) AppendEntries2(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	log.Printf("Command from %v received by %v at index of %v\n", args.LeaderId, rf.me, args.PrevLogIndex+1)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -352,6 +328,7 @@ func (rf *Raft) AppendEntries2(args *AppendEntriesArgs, reply *AppendEntriesRepl
 				j++
 			}
 			rf.currentReceived = args.Entries[len(args.Entries)-1].Index
+			reply.LastAppendIndex = len(rf.log)
 		}
 	}
 
@@ -364,20 +341,13 @@ func (rf *Raft) AppendEntries2(args *AppendEntriesArgs, reply *AppendEntriesRepl
 		go rf.ApplyCommand()
 	}
 
-	reply.LastAppendIndex = len(rf.log)
-	rf.currentReceived = len(rf.log)
-
-	log.Printf("Command from %v is appended by %v at index of %v\n", args.LeaderId, rf.me, len(rf.log))
-	log.Printf("logs on server %v: %v\n", rf.me, rf.log)
-
+	if len(args.Entries) > 0 {
+		log.Printf("Command from %v is appended by %v at index of %v\n", args.LeaderId, rf.me, len(rf.log))
+		log.Printf("logs on server %v: %v\n", rf.me, rf.log)
+	}
 }
 
-func (rf *Raft) SendAppendEntries(server int, ch chan AppendEntriesReply) {
-	// needs to consider a stopChan
-	rf.SendAppendEntries2(server, -1, ch)
-}
-
-func (rf *Raft) SendAppendEntries2(server int, issueEntryIndex int, ch chan AppendEntriesReply) {
+func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan AppendEntriesReply) {
 	// heartbeat will be empty entries
 	// appendEntries will log[rf.nextIndices[server]-1:]
 	rf.mu.Lock()
@@ -418,7 +388,7 @@ func (rf *Raft) SendAppendEntries2(server int, issueEntryIndex int, ch chan Appe
 	log.Printf("log: %v at %v \n", rf.log, rf.me)
 	rf.mu.Unlock()
 	reply := AppendEntriesReply{}
-	ok := rf.peers[server].Call("Raft.AppendEntries2", &args, &reply)
+	ok := rf.peers[server].Call("Raft.AppendEntries", &args, &reply)
 	if !ok {
 		// log.Printf("Server %v RPC request vote to %v failed!\n", rf.me, server)
 		reply.Server = server
@@ -435,7 +405,7 @@ func (rf *Raft) SendAppendEntries2(server int, issueEntryIndex int, ch chan Appe
 // although harvest may issue lots of sends
 // but at any point in time, there is exactly one send and one harvest
 // and send part are ensured to send to the channel exactly once
-func (rf *Raft) HarvestAppendEntriesReply2(issuedIndex int, sendReplyChan chan AppendEntriesReply, stopChan chan int, getReplyChan chan AppendEntriesReply) {
+func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan AppendEntriesReply, stopChan chan int, getReplyChan chan AppendEntriesReply) {
 	/*
 		get reply and handle retries
 		assume we can always get exactly one reply from getReplyChan
@@ -495,79 +465,9 @@ func (rf *Raft) HarvestAppendEntriesReply2(issuedIndex int, sendReplyChan chan A
 			}
 			rf.mu.Unlock()
 		}
-		go rf.SendAppendEntries2(reply.Server, issuedIndex, getReplyChan)
+		go rf.SendAppendEntries(reply.Server, issuedIndex, getReplyChan)
 	}
 }
-
-// func (rf *Raft) HarvestAppendEntriesReply2(issuedIndex int, sendReplyChan chan AppendEntriesReply, stopChan chan int, getReplyChan chan AppendEntriesReply, stopSendChan chan int) {
-// 	/*
-// 		get reply and handle retries
-// 		assume we can always get exactly one reply from getReplyChan
-// 		if rf is killed or no longer the leader,
-// 			the reply is dropped, no retries
-// 			won't block Start(), it has timerChan
-// 		if issued index > current index, no retries
-// 		if the index is committed, send the result to global harvest channel
-
-// 		send to sendReplyChan only if:
-// 			1. reply.success is true
-// 			2. reply.success is false but HigherTerm is true
-// 		if reply.success is false and HigherTerm is false
-// 			retries
-
-// 	*/
-// 	msgReceived := false
-// 	for !rf.killed() && rf.isLeader() {
-// 		// getReplyChan may be stuck on sending channel
-// 		reply := <-getReplyChan
-// 		/*
-// 			suppose harvest waits on getReplyChan and the server becomes the follower, then when we try to send
-// 			the message, quitMsg must be 2
-
-// 		*/
-// 		msgReceived = true
-// 		rf.mu.Lock()
-// 		hasHigherIndex := rf.issuedEntryIndices[reply.Server] > reply.IssueEntryIndex
-// 		rf.mu.Unlock()
-
-// 		// may have overlap with higher issued index but won't matter
-// 		if reply.Success || (!reply.Success && reply.HigherTerm) || hasHigherIndex {
-// 			select {
-// 			case sendReplyChan <- reply:
-
-// 			case quitMsg := <-stopChan:
-// 				if quitMsg == QUITWITHVALIDLEADER {
-// 					rf.trailingReplyChan <- reply
-// 				}
-// 			}
-// 			break
-// 		}
-
-// 		// retry
-// 		time.Sleep(time.Duration(REAPPENDTIMEOUT) * time.Millisecond)
-
-// 		// need to decrement nextIndices[server] if mismatched
-// 		if reply.MisMatched {
-// 			/*
-// 				suppose Start(comm1), Start(comm2)
-// 				rf.nextIndices[server] can be higher or lower than issuedIndex-1
-// 			*/
-// 			rf.mu.Lock()
-// 			if rf.nextIndices[reply.Server] <= reply.IssueEntryIndex {
-// 				rf.nextIndices[reply.Server]--
-// 			}
-// 			rf.mu.Unlock()
-// 		}
-// 		go rf.SendAppendEntries2(reply.Server, issuedIndex, getReplyChan, stopSendChan)
-// 		msgReceived = false
-// 	}
-
-// 	if !msgReceived {
-// 		go func(ch chan int) {
-// 			ch <- 1
-// 		}(stopSendChan)
-// 	}
-// }
 
 func (rf *Raft) HandleTrailingReply() {
 	// just update matchIndices and nextIndices
@@ -601,7 +501,7 @@ func (rf *Raft) ApplyCommand() {
 	for i < commitIndex {
 		msg := ApplyMsg{
 			CommandValid: true,
-			Command:      rf.log[i], //committed logs will never be changed, no need for locks
+			Command:      rf.log[i].Command, //committed logs will never be changed, no need for locks
 			CommandIndex: i + 1,
 		}
 		rf.applyCh <- msg
@@ -614,5 +514,46 @@ func (rf *Raft) ApplyCommand() {
 			i = rf.lastApplied
 		}
 		rf.mu.Unlock()
+	}
+}
+
+/*
+even leader turns to follower or server is killed
+we can still update the commitIndex since they are volatile
+before a new leader is elected
+*/
+func (rf *Raft) updateCommit() {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	smallestIndex := len(rf.log)
+	for i := 0; i < len(rf.peers); i++ {
+		if i == rf.me {
+			continue
+		}
+		if rf.matchIndices[i] < smallestIndex {
+			smallestIndex = rf.matchIndices[i]
+		}
+	}
+	if smallestIndex != 0 && rf.log[smallestIndex-1].Term == rf.currentTerm && rf.commitIndex < smallestIndex {
+		rf.commitIndex = smallestIndex
+	}
+}
+
+/*
+don't check !rf.killed() && rf.isLeader()
+the Start() thread checks the leader validation,
+timer should quit after receiving loop in Start()
+*/
+func (rf *Raft) CheckCommitTimeOut(quitChan chan int, timerChan chan int) {
+
+	quit := false
+	for !quit {
+		time.Sleep(time.Duration(CHECKCOMMITTIMEOUT) * time.Microsecond)
+		select {
+		case <-quitChan:
+			quit = true
+		case timerChan <- 1:
+
+		}
 	}
 }
