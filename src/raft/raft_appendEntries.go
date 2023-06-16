@@ -11,9 +11,9 @@ import (
 TestBasicAgree2B			:	pass
 TestRPCBytes2B				:	pass
 TestFailAgree2B				: 	pass
-TestFailNoAgree2B			:	fail-infinite loop
+TestFailNoAgree2B			:	pass
 TestConcurrentStarts2B		:	pass
-TestRejoin2B				:	fail-infinite loop
+TestRejoin2B				:	pass
 TestBackup2B				:	fail-infinite loop
 TestCount2B					:	pass
 */
@@ -69,7 +69,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		log.Printf("Command sends to %v, which is not a leader, the leader is %v\n", rf.me, currentLeader)
 		return index, term, isLeader
 	}
-
 	rf.mu.Lock()
 	nextIndices := rf.nextIndices
 	rf.mu.Unlock()
@@ -84,9 +83,21 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Command: command,
 	}
 	rf.log = append(rf.log, entry)
-	numOfPeers := len(rf.peers)
 
 	log.Printf("Command is appended on %v at index of %v\n", rf.me, len(rf.log))
+	rf.mu.Unlock()
+	index = entry.Index
+	term = rf.currentTerm
+	isLeader = true
+	go rf.AppendCommand(entry.Index)
+	return index, term, isLeader
+}
+
+func (rf *Raft) AppendCommand(index int) {
+
+	rf.mu.Lock()
+	entry := rf.log[index-1]
+	numOfPeers := len(rf.peers)
 	// channel for harvesting threads communicating with Start() thread
 	ch0 := make(chan AppendEntriesReply)
 	// channels for Start() thread to terminate harvesting threads
@@ -110,10 +121,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		go rf.HarvestAppendEntriesReply(entry.Index, ch0, stopChans[i], ch)
 
 	}
-
-	index = entry.Index
-	term = rf.currentTerm
-	isLeader = true
 
 	rf.mu.Unlock()
 	successCount := 1
@@ -248,11 +255,9 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		*/
 		time.Sleep(time.Duration(ELETIMEOUT) * time.Millisecond)
 		close(rf.trailingReplyChan)
-		isLeader = false
 	}
 
 	go rf.ApplyCommand()
-	return index, term, isLeader
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
