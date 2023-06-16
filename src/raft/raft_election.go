@@ -2,7 +2,7 @@ package raft
 
 import (
 	//	"bytes"
-	"log"
+	// "log"
 	"math/rand"
 	"time"
 	//	"6.824/labgob"
@@ -28,8 +28,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	up_to_date := true
 	if logSize > 0 {
 		up_to_date = args.LastLogTerm > rf.log[logSize-1].Term || (args.LastLogTerm == rf.log[logSize-1].Term && args.LastLogIndex >= logSize)
-		log.Printf(" %v up-to-date as %v: %v\n", args.CandidateId, rf.me, up_to_date)
-		log.Printf(".....args.LastLogTerm: %v, rf.log[logSize-1].Term: %v, args.LastLogIndex: %v, logSize: %v\n....\n", args.LastLogTerm, rf.log[logSize-1].Term, args.LastLogIndex, logSize)
+		DPrintf(" %v up-to-date as %v: %v\n", args.CandidateId, rf.me, up_to_date)
+		DPrintf(".....args.LastLogTerm: %v, rf.log[logSize-1].Term: %v, args.LastLogIndex: %v, logSize: %v\n....\n", args.LastLogTerm, rf.log[logSize-1].Term, args.LastLogIndex, logSize)
 	}
 
 	if up_to_date && (rf.votedFor == -1 || rf.votedFor == args.CandidateId) {
@@ -40,7 +40,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	} else {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
-		log.Printf(" %v already votes for %v at term %v\n", rf.me, rf.votedFor, rf.currentTerm)
+		DPrintf(" %v already votes for %v at term %v\n", rf.me, rf.votedFor, rf.currentTerm)
 	}
 }
 
@@ -127,8 +127,8 @@ func (rf *Raft) Election(timeout int) {
 	}
 	term := rf.currentTerm
 	rf.mu.Unlock()
-	log.Printf("\n%v starts election at term %v\n", rf.me, term)
-	log.Printf("%v timeout: %v at term %v\n", rf.me, timeout, term)
+	DPrintf("\n%v starts election at term %v\n", rf.me, term)
+	DPrintf("%v timeout: %v at term %v\n", rf.me, timeout, term)
 
 	ch := make(chan RequestVoteReply)
 	for i := 0; i < len(rf.peers); i++ {
@@ -147,9 +147,9 @@ func (rf *Raft) Election(timeout int) {
 		}
 		if reply.VoteGranted {
 			countVotes++
-			log.Printf("%v grants vote to %v at term %v\n", reply.Server, rf.me, term)
+			DPrintf("%v grants vote to %v at term %v\n", reply.Server, rf.me, term)
 		} else {
-			log.Printf("%v doesn't grant vote to %v at term %v\n", reply.Server, rf.me, term)
+			DPrintf("%v doesn't grant vote to %v at term %v\n", reply.Server, rf.me, term)
 		}
 		if countVotes >= len(rf.peers)/2+1 {
 			//unblock the sendRequestVote gorountines
@@ -161,7 +161,7 @@ func (rf *Raft) Election(timeout int) {
 			break
 		}
 	}
-	log.Printf("total votes: %v to %v at term %v\n", countVotes, rf.me, term)
+	DPrintf("total votes: %v to %v at term %v\n", countVotes, rf.me, term)
 	rf.mu.Lock()
 	/*
 		if role is not candidate, it means some higher term candidate
@@ -187,7 +187,7 @@ func (rf *Raft) Election(timeout int) {
 		}
 		rf.trailingReplyChan = make(chan AppendEntriesReply)
 		go rf.HandleTrailingReply()
-		log.Printf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
+		DPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
 	} else {
 		/*
 			only when the candidate can't get the majority of the votes
@@ -197,7 +197,7 @@ func (rf *Raft) Election(timeout int) {
 		if highestTerm > rf.currentTerm {
 			rf.currentTerm = highestTerm
 		}
-		log.Printf("%v failed the election at term %v\n", rf.me, rf.currentTerm)
+		DPrintf("%v failed the election at term %v\n", rf.me, rf.currentTerm)
 	}
 	rf.mu.Unlock()
 }

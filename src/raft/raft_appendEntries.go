@@ -66,15 +66,15 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		rf.mu.Lock()
 		currentLeader := rf.currentLeader
 		rf.mu.Unlock()
-		log.Printf("Command sends to %v, which is not a leader, the leader is %v\n", rf.me, currentLeader)
+		DPrintf("Command sends to %v, which is not a leader, the leader is %v\n", rf.me, currentLeader)
 		return index, term, isLeader
 	}
-	rf.mu.Lock()
-	nextIndices := rf.nextIndices
-	rf.mu.Unlock()
-	log.Printf("Command sends to %v, which is a leader\n", rf.me)
-	log.Printf("the next indices are: %v\n", nextIndices)
-	log.Printf("Start processing...\n")
+	// rf.mu.Lock()
+	// nextIndices := rf.nextIndices
+	// rf.mu.Unlock()
+	DPrintf("Command sends to %v, which is a leader\n", rf.me)
+	// DPrintf("the next indices are: %v\n", nextIndices)
+	DPrintf("Start processing...\n")
 	//append to the leader's local log
 	rf.mu.Lock()
 	entry := LogEntry{
@@ -84,7 +84,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	rf.log = append(rf.log, entry)
 
-	log.Printf("Command is appended on %v at index of %v\n", rf.me, len(rf.log))
+	DPrintf("Command is appended on %v at index of %v\n", rf.me, len(rf.log))
 	rf.mu.Unlock()
 	index = entry.Index
 	term = rf.currentTerm
@@ -201,13 +201,13 @@ func (rf *Raft) AppendCommand(index int) {
 	/*
 		for all not replied harvesting threads, send out a message to redirect to global harvest replies or just drop all replies
 	*/
-	log.Printf("....harvestedServers: %v\n", harvestedServers)
+	DPrintf("....harvestedServers: %v\n", harvestedServers)
 	for i := 0; i < numOfPeers; i++ {
 		if i == rf.me || harvestedServers[i] {
 			continue
 		}
 		go func(ch chan int, server int) {
-			log.Printf("....quitMessage: %v is sent to %v\n", quitMessage, server)
+			DPrintf("....quitMessage: %v is sent to %v\n", quitMessage, server)
 			ch <- quitMessage
 		}(stopChans[i], i)
 	}
@@ -253,7 +253,7 @@ func (rf *Raft) AppendCommand(index int) {
 			comm1 to server i must be a success request which is issued before comm2 to server i, it would take at most RPC call timeout time.
 			choose ELETIMEOUT, because it's ok to update matchedIndices and nextIndices before a new leader is established.
 		*/
-		time.Sleep(time.Duration(ELETIMEOUT) * time.Millisecond)
+		time.Sleep(time.Duration(ELETIMEOUT/2) * time.Millisecond)
 		close(rf.trailingReplyChan)
 	}
 
@@ -261,7 +261,7 @@ func (rf *Raft) AppendCommand(index int) {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	log.Printf("Command from %v received by %v at index of %v\n", args.LeaderId, rf.me, args.PrevLogIndex+1)
+	DPrintf("Command from %v received by %v at index of %v\n", args.LeaderId, rf.me, args.PrevLogIndex+1)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	// the reply's term may be less than leader's
@@ -352,8 +352,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 	if len(args.Entries) > 0 {
-		log.Printf("Command from %v is appended by %v at index of %v\n", args.LeaderId, rf.me, len(rf.log))
-		log.Printf("logs on server %v: %v\n", rf.me, rf.log)
+		DPrintf("Command from %v is appended by %v at index of %v\n", args.LeaderId, rf.me, len(rf.log))
+		DPrintf("logs on server %v: %v\n", rf.me, rf.log)
 	}
 }
 
@@ -370,7 +370,7 @@ func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 	prevLogTerm := 0
 	entries := make([]LogEntry, 0)
 	next := rf.nextIndices[server]
-	log.Printf("next index to %v is %v \n", server, next)
+	DPrintf("next index to %v is %v \n", server, next)
 	if next < 1 {
 		log.Fatalf("fatal: next index to %v is %v \n", server, next)
 	}
@@ -394,13 +394,13 @@ func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 		Entries:           entries,
 		LeaderCommitIndex: rf.commitIndex,
 	}
-	log.Printf("args: %v at %v to %v\n", args, rf.me, server)
-	log.Printf("log: %v at %v \n", rf.log, rf.me)
+	DPrintf("args: %v at %v to %v\n", args, rf.me, server)
+	DPrintf("log: %v at %v \n", rf.log, rf.me)
 	rf.mu.Unlock()
 	reply := AppendEntriesReply{}
 	ok := rf.peers[server].Call("Raft.AppendEntries", &args, &reply)
 	if !ok {
-		// log.Printf("Server %v RPC request vote to %v failed!\n", rf.me, server)
+		// DPrintf("Server %v RPC request vote to %v failed!\n", rf.me, server)
 		reply.Server = server
 		reply.IssueEntryIndex = 0
 		reply.LastAppendIndex = 0
@@ -446,12 +446,12 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 
 		// may have overlap with higher issued index but won't matter
 		if reply.Success || (!reply.Success && reply.HigherTerm) || hasHigherIndex {
-			log.Printf("reply from server %v: %v waiting for sending", reply.Server, reply)
+			DPrintf("reply from server %v: %v waiting for sending", reply.Server, reply)
 			select {
 			case sendReplyChan <- reply:
-				log.Printf("reply from server %v sends to replyChan", reply.Server)
+				DPrintf("reply from server %v sends to replyChan", reply.Server)
 			case quitMsg := <-stopChan:
-				log.Printf("...quitMsg: %v, reply from server %v sends to trailing", quitMsg, reply.Server)
+				DPrintf("...quitMsg: %v, reply from server %v sends to trailing", quitMsg, reply.Server)
 				if reply.Success && quitMsg == QUITWITHVALIDLEADER {
 					rf.trailingReplyChan <- reply
 				}
@@ -483,9 +483,9 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 
 func (rf *Raft) HandleTrailingReply() {
 	// just update matchIndices and nextIndices
-	log.Printf("HandleTrailingReply gets running....")
+	DPrintf("HandleTrailingReply gets running....")
 	for reply := range rf.trailingReplyChan {
-		log.Printf("HandleTrailingReply got Reply: %v", reply)
+		DPrintf("HandleTrailingReply got Reply: %v", reply)
 		if !reply.Success {
 			// ignore highIndex which can invalidate the current leader
 			continue
@@ -508,9 +508,9 @@ func (rf *Raft) HandleTrailingReply() {
 
 // func (rf *Raft) HandleTrailingReply() {
 // 	// just update matchIndices and nextIndices
-// 	log.Printf("HandleTrailingReply gets running....")
+// 	DPrintf("HandleTrailingReply gets running....")
 // 	for reply := range rf.trailingReplyChan {
-// 		log.Printf("HandleTrailingReply got Reply: %v", reply)
+// 		DPrintf("HandleTrailingReply got Reply: %v", reply)
 // 		if !reply.Success {
 // 			// ignore highIndex which can invalidate the current leader
 // 			continue
