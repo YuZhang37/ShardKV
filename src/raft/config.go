@@ -230,13 +230,11 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 	}
 }
 
-//
 // start or re-start a Raft.
 // if one already exists, "kill" it first.
 // allocate new outgoing port file names, and a new
 // state persister, to isolate previous instance of
 // this server. since we cannot really kill it.
-//
 func (cfg *config) start1(i int, applier func(int, chan ApplyMsg)) {
 	cfg.crash1(i)
 
@@ -440,8 +438,15 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 
 		cfg.mu.Lock()
 		cmd1, ok := cfg.logs[i][index]
+		cfg.rafts[i].mu.Lock()
+		leader := cfg.rafts[i].currentLeader
+		cfg.rafts[i].mu.Unlock()
 		cfg.mu.Unlock()
 
+		log.Printf("server %v takes %v as a leader\n", i, leader)
+		log.Printf("server %v log is %v\n", i, cfg.rafts[i].log)
+		log.Printf("server %v commit index is %v\n", i, cfg.rafts[i].commitIndex)
+		log.Printf("cmd1: %v, ok: %v\n", cmd1, ok)
 		if ok {
 			if count > 0 && cmd != cmd1 {
 				cfg.t.Fatalf("committed values do not match: index %v, %v, %v\n",
@@ -523,9 +528,11 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 		if index != -1 {
 			// somebody claimed to be the leader and to have
 			// submitted our command; wait a while for agreement.
+			log.Printf("%v got appended at %v\n", cmd, index)
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
+				log.Printf("%v servers think %v is committed.\n", nd, cmd1)
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd1 == cmd {
@@ -533,7 +540,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 						return index
 					}
 				}
-				time.Sleep(20 * time.Millisecond)
+				time.Sleep(500 * time.Millisecond)
 			}
 			if retry == false {
 				cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
