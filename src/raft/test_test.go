@@ -8,12 +8,14 @@ package raft
 // test with the original before submitting.
 //
 
-import "testing"
-import "fmt"
-import "time"
-import "math/rand"
-import "sync/atomic"
-import "sync"
+import (
+	"fmt"
+	"math/rand"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
 
 // The tester generously allows solutions to complete elections in one second
 // (much more than the paper's range of timeouts).
@@ -191,6 +193,7 @@ func TestFailAgree2B(t *testing.T) {
 	cfg.begin("Test (2B): agreement despite follower disconnection")
 
 	cfg.one(101, servers, false)
+	fmt.Printf("%v is appended successfully.\n", 101)
 
 	// disconnect one follower from the network.
 	leader := cfg.checkOneLeader()
@@ -199,10 +202,14 @@ func TestFailAgree2B(t *testing.T) {
 	// the leader and remaining follower should be
 	// able to agree despite the disconnected follower.
 	cfg.one(102, servers-1, false)
+	fmt.Printf("%v is appended successfully.\n", 102)
 	cfg.one(103, servers-1, false)
+	fmt.Printf("%v is appended successfully.\n", 103)
 	time.Sleep(RaftElectionTimeout)
 	cfg.one(104, servers-1, false)
+	fmt.Printf("%v is appended successfully.\n", 104)
 	cfg.one(105, servers-1, false)
+	fmt.Printf("%v is appended successfully.\n", 105)
 
 	// re-connect
 	cfg.connect((leader + 1) % servers)
@@ -211,8 +218,10 @@ func TestFailAgree2B(t *testing.T) {
 	// previous agreements, and be able to agree
 	// on new commands.
 	cfg.one(106, servers, true)
+	fmt.Printf("%v is appended successfully.\n", 106)
 	time.Sleep(RaftElectionTimeout)
 	cfg.one(107, servers, true)
+	fmt.Printf("%v is appended successfully.\n", 107)
 
 	cfg.end()
 }

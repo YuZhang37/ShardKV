@@ -10,7 +10,7 @@ import (
 /* tests
 TestBasicAgree2B			:	pass
 TestRPCBytes2B				:	pass
-TestFailAgree2B				: 	fail-failed to reach agreement
+TestFailAgree2B				: 	pass
 TestFailNoAgree2B			:	fail-infinite loop
 TestConcurrentStarts2B		:	pass
 TestRejoin2B				:	fail-infinite loop
@@ -91,6 +91,9 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	ch0 := make(chan AppendEntriesReply)
 	// channels for Start() thread to terminate harvesting threads
 	stopChans := make([]chan int, numOfPeers)
+	for i := 0; i < len(stopChans); i++ {
+		stopChans[i] = make(chan int)
+	}
 
 	for i := 0; i < numOfPeers; i++ {
 		if i == rf.me {
@@ -191,13 +194,15 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	/*
 		for all not replied harvesting threads, send out a message to redirect to global harvest replies or just drop all replies
 	*/
+	log.Printf("....harvestedServers: %v\n", harvestedServers)
 	for i := 0; i < numOfPeers; i++ {
 		if i == rf.me || harvestedServers[i] {
 			continue
 		}
-		go func(ch chan int) {
+		go func(ch chan int, server int) {
+			log.Printf("....quitMessage: %v is sent to %v\n", quitMessage, server)
 			ch <- quitMessage
-		}(stopChans[i])
+		}(stopChans[i], i)
 	}
 
 	// close global havesting thread if the leader turns to a follower
@@ -384,7 +389,7 @@ func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 		Entries:           entries,
 		LeaderCommitIndex: rf.commitIndex,
 	}
-	log.Printf("args: %v at %v \n", args, rf.me)
+	log.Printf("args: %v at %v to %v\n", args, rf.me, server)
 	log.Printf("log: %v at %v \n", rf.log, rf.me)
 	rf.mu.Unlock()
 	reply := AppendEntriesReply{}
@@ -436,11 +441,13 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 
 		// may have overlap with higher issued index but won't matter
 		if reply.Success || (!reply.Success && reply.HigherTerm) || hasHigherIndex {
+			log.Printf("reply from server %v: %v waiting for sending", reply.Server, reply)
 			select {
 			case sendReplyChan <- reply:
-
+				log.Printf("reply from server %v sends to replyChan", reply.Server)
 			case quitMsg := <-stopChan:
-				if quitMsg == QUITWITHVALIDLEADER {
+				log.Printf("...quitMsg: %v, reply from server %v sends to trailing", quitMsg, reply.Server)
+				if reply.Success && quitMsg == QUITWITHVALIDLEADER {
 					rf.trailingReplyChan <- reply
 				}
 			}
@@ -471,7 +478,9 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 
 func (rf *Raft) HandleTrailingReply() {
 	// just update matchIndices and nextIndices
+	log.Printf("HandleTrailingReply gets running....")
 	for reply := range rf.trailingReplyChan {
+		log.Printf("HandleTrailingReply got Reply: %v", reply)
 		if !reply.Success {
 			// ignore highIndex which can invalidate the current leader
 			continue
@@ -491,6 +500,31 @@ func (rf *Raft) HandleTrailingReply() {
 	}
 
 }
+
+// func (rf *Raft) HandleTrailingReply() {
+// 	// just update matchIndices and nextIndices
+// 	log.Printf("HandleTrailingReply gets running....")
+// 	for reply := range rf.trailingReplyChan {
+// 		log.Printf("HandleTrailingReply got Reply: %v", reply)
+// 		if !reply.Success {
+// 			// ignore highIndex which can invalidate the current leader
+// 			continue
+// 		}
+// 		rf.mu.Lock()
+
+// 		if rf.matchIndices[reply.Server] < reply.LastAppendIndex {
+// 			rf.matchIndices[reply.Server] = reply.LastAppendIndex
+// 		}
+
+// 		if rf.nextIndices[reply.Server] < reply.LastAppendIndex+1 {
+// 			rf.nextIndices[reply.Server] = reply.LastAppendIndex + 1
+// 		}
+
+// 		rf.mu.Unlock()
+
+// 	}
+
+// }
 
 func (rf *Raft) ApplyCommand() {
 	rf.mu.Lock()

@@ -20,15 +20,16 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		return
 	}
 	if args.Term > rf.currentTerm {
-		rf.currentTerm = reply.Term
+		rf.currentTerm = args.Term
 		rf.votedFor = -1
 		rf.role = FOLLOWER
 	}
 	logSize := len(rf.log)
 	up_to_date := true
 	if logSize > 0 {
-		up_to_date = args.LastLogTerm > rf.log[logSize-1].Term ||
-			(args.LastLogTerm == rf.currentTerm && args.LastLogIndex >= logSize)
+		up_to_date = args.LastLogTerm > rf.log[logSize-1].Term || (args.LastLogTerm == rf.log[logSize-1].Term && args.LastLogIndex >= logSize)
+		log.Printf(" %v up-to-date as %v: %v\n", args.CandidateId, rf.me, up_to_date)
+		log.Printf(".....args.LastLogTerm: %v, rf.log[logSize-1].Term: %v, args.LastLogIndex: %v, logSize: %v\n....\n", args.LastLogTerm, rf.log[logSize-1].Term, args.LastLogIndex, logSize)
 	}
 
 	if up_to_date && (rf.votedFor == -1 || rf.votedFor == args.CandidateId) {
