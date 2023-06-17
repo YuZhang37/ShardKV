@@ -7,17 +7,6 @@ import (
 	//	"6.824/labgob"
 )
 
-/* tests
-TestBasicAgree2B			:	pass
-TestRPCBytes2B				:	pass
-TestFailAgree2B				: 	pass
-TestFailNoAgree2B			:	pass
-TestConcurrentStarts2B		:	pass
-TestRejoin2B				:	pass
-TestBackup2B				:	fail-infinite loop
-TestCount2B					:	pass
-*/
-
 // for heartbeat: send and harvest is 1 on 1, and send part definitely sends to the channel, no need for stopChan
 func (rf *Raft) HeartBeat(server int) {
 	replyChan := make(chan AppendEntriesReply)
@@ -29,6 +18,10 @@ func (rf *Raft) HeartBeat(server int) {
 
 }
 
+/*
+heartbeat will only update the followers's commitIndex
+and leader's term
+*/
 func (rf *Raft) HarvestHeartbeatReply(replyChan chan AppendEntriesReply) {
 	reply := <-replyChan
 	if rf.killed() || !rf.isLeader() {
@@ -46,37 +39,37 @@ func (rf *Raft) HarvestHeartbeatReply(replyChan chan AppendEntriesReply) {
 	}
 }
 
-// the service using Raft (e.g. a k/v server) wants to start
-// agreement on the next command to be appended to Raft's log. if this
-// server isn't the leader, returns false. otherwise start the
-// agreement and return immediately. there is no guarantee that this
-// command will ever be committed to the Raft log, since the leader
-// may fail or lose an election. even if the Raft instance has been killed,
-// this function should return gracefully.
-//
-// the first return value is the index that the command will appear at
-// if it's ever committed. the second return value is the current
-// term. the third return value is true if this server believes it is
-// the leader.
+/*
+the service using Raft (e.g. a k/v server) wants to start
+agreement on the next command to be appended to Raft's log. if this
+server isn't the leader, returns false. otherwise start the
+agreement and return immediately. there is no guarantee that this
+command will ever be committed to the Raft log, since the leader
+may fail or lose an election. even if the Raft instance has been killed,
+this function should return gracefully.
+
+the first return value is the index that the command will appear at
+if it's ever committed. the second return value is the current
+term. the third return value is true if this server believes it is
+the leader.
+
+if the command sends to the valid leader, entry will be appended to the leader's local log and returns index, term, true,
+an AppendCommand goroutine is issued to commit the command
+otherwise returns 0, 0, false
+*/
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	index := -1
-	term := -1
-	isLeader := false
-	if !rf.isLeader() {
-		rf.mu.Lock()
-		currentLeader := rf.currentLeader
-		rf.mu.Unlock()
-		DPrintf("Command sends to %v, which is not a leader, the leader is %v\n", rf.me, currentLeader)
-		return index, term, isLeader
-	}
-	// rf.mu.Lock()
-	// nextIndices := rf.nextIndices
-	// rf.mu.Unlock()
-	DPrintf("Command sends to %v, which is a leader\n", rf.me)
-	// DPrintf("the next indices are: %v\n", nextIndices)
-	DPrintf("Start processing...\n")
-	//append to the leader's local log
 	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	if rf.killed() || rf.role != LEADER {
+		AppendEntriesDPrintf("Command sends to %v, which is not a leader, the leader is %v\n", rf.me, rf.currentLeader)
+		return -1, -1, false
+	}
+
+	AppendEntriesDPrintf("Command sends to %v, which is a leader\n", rf.me)
+	AppendEntriesDPrintf("Start processing...\n")
+
+	//append to the leader's local log
 	entry := LogEntry{
 		Term:    rf.currentTerm,
 		Index:   len(rf.log) + 1,
@@ -84,13 +77,10 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	rf.log = append(rf.log, entry)
 
-	DPrintf("Command is appended on %v at index of %v\n", rf.me, len(rf.log))
-	rf.mu.Unlock()
-	index = entry.Index
-	term = rf.currentTerm
-	isLeader = true
+	AppendEntriesDPrintf("Command is appended on %v at index of %v\n", rf.me, len(rf.log))
+
 	go rf.AppendCommand(entry.Index)
-	return index, term, isLeader
+	return entry.Index, entry.Term, true
 }
 
 func (rf *Raft) AppendCommand(index int) {
@@ -98,9 +88,31 @@ func (rf *Raft) AppendCommand(index int) {
 	rf.mu.Lock()
 	entry := rf.log[index-1]
 	numOfPeers := len(rf.peers)
-	// channel for harvesting threads communicating with Start() thread
+	AppendEntriesDPrintf("....AppendCommand at server %v: %v\n", rf.me, entry)
+	/*
+		the reason we need a stopChan for each harvesting thread, is that the thread
+		is not guaranteed to return, may loop for sending RPC, and when the loop
+		exit for the condition that the server is not valid, ch0 may not receive
+		messages, and the harvesting thread is halted.
+
+		on the other hand, harvest is guaranteed to send exactly
+		one message to AppendCommand() when the leader becomes invalid,
+
+		1. harvest may detect this before AppendCommand, and don't send the reply on ch0, it can pass with timerChan
+		2. harvest may detect this after AppendCommand, and wait for receiving on ch0, it blocks
+
+		add quitChan to unblock situation 2
+		to avoid block block stopChan, record the servers we have
+		received replies, don't send messages to their stopChans
+
+		infinite loop:
+		when the leader is valid, and the issued entry is the last entry, and the corresponding server failed,
+		then this request is sending infinitely
+	*/
+
+	// channel for harvesting threads communicating with AppendCommand() thread
 	ch0 := make(chan AppendEntriesReply)
-	// channels for Start() thread to terminate harvesting threads
+	// channels for AppendCommand() thread to terminate harvesting threads
 	stopChans := make([]chan int, numOfPeers)
 	for i := 0; i < len(stopChans); i++ {
 		stopChans[i] = make(chan int)
@@ -110,11 +122,11 @@ func (rf *Raft) AppendCommand(index int) {
 		if i == rf.me {
 			continue
 		}
-		// channel for sending thread send the reply to harvesting thread
+		// channel for send thread to send the reply to harvest thread
 		ch := make(chan AppendEntriesReply)
 
 		// there could be many outstanding appendEntries to the
-		// same server issued by Start(comm1) and Start(comm2)
+		// same server issued by AppendCommand(comm1) and AppendCommand(comm2)
 		// the args.entries to send may be longer than this new entry
 		// doesn't matter, AppendEntries will handle them
 		go rf.SendAppendEntries(i, entry.Index, ch)
@@ -123,23 +135,50 @@ func (rf *Raft) AppendCommand(index int) {
 	}
 
 	rf.mu.Unlock()
-	successCount := 1
 
 	/*
-		accommodate the case where Start(comm2) may commit comm1,
-		also it's possible Start(comm1) can commit comm2
+		periodically time out to check commitIndex
+		accommodate the case where AppendCommand(comm2) may commit comm1,
+		also it's possible AppendCommand(comm1) can commit comm2
 	*/
 	timerChan := make(chan int)
 	quitTimerChan := make(chan int)
 	go rf.CheckCommitTimeOut(quitTimerChan, timerChan)
 
+	harvestedServers := rf.TryCommit(ch0, timerChan, numOfPeers, entry)
+
+	// stop the timer thread
+	go func(ch chan int) {
+		ch <- 1
+	}(quitTimerChan)
+
+	rf.QuitBlockedHarvests(numOfPeers, harvestedServers, stopChans)
+
+	go rf.ApplyCommand()
+}
+
+/*
+returns a map containing all handled harvests,
+all handled harvests are guaranteed to be not blocked,
+all unhandled harvests can send requests at most one more time (RPC timeout time) and get blocked, then all replies will be redirected to global harvest.
+
+blocked
+it can have infinite loop:
+when the leader keeps valid, and the last entry
+fails to append on the majority of the followers
+
+when tryCommit returns, the command may or may not committed
+the leader may become a follower
+
+the higherTerm reply may redirected to global harvest,
+but it will be dropped and won't be processed.
+*/
+func (rf *Raft) TryCommit(ch0 chan AppendEntriesReply, timerChan chan int, numOfPeers int, entry LogEntry) map[int]bool {
+
+	// the leader has appended the entry
+	successCount := 1
 	tryCommit := true
 	harvestedServers := make(map[int]bool)
-	/*
-		indicate what the harvesting threads should do when Start() stops
-		receiving replies, drop the reply or send to global harvesting
-	*/
-	quitMessage := QUITWITHVALIDLEADER
 
 	for tryCommit && !rf.killed() && rf.isLeader() {
 		select {
@@ -148,7 +187,7 @@ func (rf *Raft) AppendCommand(index int) {
 			rf.mu.Lock()
 			if reply.Success {
 				successCount++
-				// to cover the case Start(comm2) finishes before Start(comm1)
+				// to cover the case AppendCommand(comm2) finishes before AppendCommand(comm1)
 				if rf.matchIndices[reply.Server] < reply.LastAppendIndex {
 					rf.matchIndices[reply.Server] = reply.LastAppendIndex
 				}
@@ -162,8 +201,8 @@ func (rf *Raft) AppendCommand(index int) {
 				rf.currentTerm = reply.Term
 				// all threads need to be stopped
 				tryCommit = false
-				quitMessage = QUITWITHINVALIDLEADER
 			}
+			// the reply when failed with higher issue index is dropped
 
 			if successCount > numOfPeers/2 {
 				if rf.commitIndex < entry.Index {
@@ -182,86 +221,34 @@ func (rf *Raft) AppendCommand(index int) {
 			rf.mu.Unlock()
 		}
 	}
+	return harvestedServers
+}
 
-	/*
-		at this point, the leader either commits the entry or the leader becomes a follower
-
-		could it be possible that the leader commits the entry and becomes a follower?
-		not possible, the loop deals with the reply one by one,
-		either it reaches majority or touches a higher term reply
-
-		although it's possible that the higher term reply goes to global reply harvest, but it just ignores the reply
-	*/
-
-	// stop the timer thread
-	go func(ch chan int) {
-		ch <- 1
-	}(quitTimerChan)
-
-	/*
-		for all not replied harvesting threads, send out a message to redirect to global harvest replies or just drop all replies
-	*/
-	DPrintf("....harvestedServers: %v\n", harvestedServers)
+/*
+for all harvest goroutines which don't reply, send out a message to redirect the replies to global harvest or just drop all replies
+*/
+func (rf *Raft) QuitBlockedHarvests(numOfPeers int, harvestedServers map[int]bool, stopChans []chan int) {
+	AppendEntriesDPrintf("....harvestedServers: %v\n", harvestedServers)
 	for i := 0; i < numOfPeers; i++ {
 		if i == rf.me || harvestedServers[i] {
 			continue
 		}
 		go func(ch chan int, server int) {
-			DPrintf("....quitMessage: %v is sent to %v\n", quitMessage, server)
+			quitMessage := 1
+			AppendEntriesDPrintf("....quitMessage: %v is sent to %v\n", quitMessage, server)
 			ch <- quitMessage
 		}(stopChans[i], i)
 	}
-
-	// close global havesting thread if the leader turns to a follower
-	if quitMessage == QUITWITHINVALIDLEADER {
-		/*
-			when we close traiglingReplyChan at this moment, are there messages wait on this channel?
-			yes,
-			for Start(comm1), majority has return success:
-			follower i is sent to redirect,
-			Start(comm2), contacts a higher term follower j,
-			the leader turns to a follower,
-			the retry to follower i with comm1 is a success,
-			it will be sent to trailingReplyChan,
-			and the channel may have been closed
-
-			if we get success reply for comm2, this reply will definitely be dropped, since both channels are closed for it.
-
-			can we discard the success reply if there is an outgoing request with high issuedIndex ?
-			won't solve the problem. There can be a period:
-			success reply for comm1 from follower i is returned, but comm2 is not sent to follower i yet and reply follower j
-			for comm2 is returned.
-
-			what is the window time for success reply of comm1 to be sent to a closed trailingReplyChan?
-
-			reply from follower j for comm2 must be returned.
-			request to follower i for comm1 must be issued before the one for comm2
-
-			if there are new entries beyond comm1, success replies
-			don't be sent to trailingReplyChan,
-			sacrifice some sync info
-
-			if leader turns to follower:
-			we need to wait for all threads to stop
-			sending threads,
-			harvesting threads,
-			handling trailing threads
-			heartbeat threads <stops when detecting invalid leader>
-		*/
-
-		/*
-			comm1 to server i must be a success request which is issued before comm2 to server i, it would take at most RPC call timeout time.
-			choose ELETIMEOUT, because it's ok to update matchedIndices and nextIndices before a new leader is established.
-		*/
-		time.Sleep(time.Duration(ELETIMEOUT/2) * time.Millisecond)
-		close(rf.trailingReplyChan)
-	}
-
-	go rf.ApplyCommand()
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	DPrintf("Command from %v received by %v at index of %v\n", args.LeaderId, rf.me, args.PrevLogIndex+1)
+	funct := 1
+	if len(args.Entries) == 0 {
+		funct = 2
+	}
+
+	AppendEntries2DPrintf(funct, "Command from %v received by %v at index of %v\n", args.LeaderId, rf.me, args.PrevLogIndex+1)
+
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	// the reply's term may be less than leader's
@@ -312,8 +299,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	if len(args.Entries) > 0 {
 		if args.Entries[len(args.Entries)-1].Index <= rf.currentReceived {
 			// no newly appended entries in args
-			// suppose Start(comm1), Start(comm2)
+			// suppose AppendCommand(comm1), AppendCommand(comm2)
 			// comm2 may get to the server earlier than comm1
+			// comm1 carries comm2
 			reply.LastAppendIndex = len(args.Entries)
 		} else {
 			// have new entries, append
@@ -342,6 +330,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		}
 	}
 
+	//update commitIndex both for heartbeat and appendEntries
 	leaderCommitIndex := args.LeaderCommitIndex
 	if rf.currentReceived < leaderCommitIndex {
 		leaderCommitIndex = rf.currentReceived
@@ -351,26 +340,31 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		go rf.ApplyCommand()
 	}
 
-	if len(args.Entries) > 0 {
-		DPrintf("Command from %v is appended by %v at index of %v\n", args.LeaderId, rf.me, len(rf.log))
-		DPrintf("logs on server %v: %v\n", rf.me, rf.log)
-	}
+	AppendEntries2DPrintf(funct, "Command from %v is appended by %v at index of %v\n", args.LeaderId, rf.me, len(rf.log))
+	AppendEntries2DPrintf(funct, "logs on server %v: %v\n", rf.me, rf.log)
+
 }
 
+/*
+this function will guarantee to send to ch exact one reply, the longest time it takes is the RPC timeout.
+for heartbeat entries will be entries
+for appendEntries, entries will log[rf.nextIndices[server]-1:]
+*/
 func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan AppendEntriesReply) {
-	// heartbeat will be empty entries
-	// appendEntries will log[rf.nextIndices[server]-1:]
 	rf.mu.Lock()
 
 	if rf.issuedEntryIndices[server] < issueEntryIndex {
 		rf.issuedEntryIndices[server] = issueEntryIndex
 	}
-
+	funct := 1
+	if issueEntryIndex < 0 {
+		funct = 2
+	}
 	prevLogIndex := 0
 	prevLogTerm := 0
 	entries := make([]LogEntry, 0)
 	next := rf.nextIndices[server]
-	DPrintf("next index to %v is %v \n", server, next)
+	AppendEntries2DPrintf(funct, "next index to %v is %v \n", server, next)
 	if next < 1 {
 		log.Fatalf("fatal: next index to %v is %v \n", server, next)
 	}
@@ -394,13 +388,13 @@ func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 		Entries:           entries,
 		LeaderCommitIndex: rf.commitIndex,
 	}
-	DPrintf("args: %v at %v to %v\n", args, rf.me, server)
-	DPrintf("log: %v at %v \n", rf.log, rf.me)
+	AppendEntries2DPrintf(funct, "args: %v at %v to %v\n", args, rf.me, server)
+	AppendEntries2DPrintf(funct, "log: %v at %v \n", rf.log, rf.me)
 	rf.mu.Unlock()
 	reply := AppendEntriesReply{}
 	ok := rf.peers[server].Call("Raft.AppendEntries", &args, &reply)
 	if !ok {
-		// DPrintf("Server %v RPC request vote to %v failed!\n", rf.me, server)
+		// AppendEntriesDPrintf("Server %v RPC request vote to %v failed!\n", rf.me, server)
 		reply.Server = server
 		reply.IssueEntryIndex = 0
 		reply.LastAppendIndex = 0
@@ -421,7 +415,7 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 		assume we can always get exactly one reply from getReplyChan
 		if rf is killed or no longer the leader,
 			the reply is dropped, no retries
-			won't block Start(), it has timerChan
+			won't block AppendCommand(), it has timerChan
 		if issued index > current index, no retries
 		if the index is committed, send the result to global harvest channel
 
@@ -442,17 +436,29 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 		*/
 		rf.mu.Lock()
 		hasHigherIndex := rf.issuedEntryIndices[reply.Server] > reply.IssueEntryIndex
+		isLeader := rf.role == LEADER
 		rf.mu.Unlock()
-
-		// may have overlap with higher issued index but won't matter
-		if reply.Success || (!reply.Success && reply.HigherTerm) || hasHigherIndex {
-			DPrintf("reply from server %v: %v waiting for sending", reply.Server, reply)
+		quitMsg := 0
+		if reply.Success || reply.HigherTerm || hasHigherIndex || rf.killed() || !isLeader {
+			// include to
+			// detect the server is not a valid leader any more
+			// return a false reply, which will be discarded by AppendCommand
+			AppendEntriesDPrintf("reply from server %v: %v waiting for sending", reply.Server, reply)
 			select {
 			case sendReplyChan <- reply:
-				DPrintf("reply from server %v sends to replyChan", reply.Server)
-			case quitMsg := <-stopChan:
-				DPrintf("...quitMsg: %v, reply from server %v sends to trailing", quitMsg, reply.Server)
-				if reply.Success && quitMsg == QUITWITHVALIDLEADER {
+				AppendEntriesDPrintf("reply from server %v sends to replyChan", reply.Server)
+			case quitMsg = <-stopChan:
+				AppendEntriesDPrintf("...quitMsg: %v, reply from server %v sends to trailing", quitMsg, reply.Server)
+				if reply.Success {
+					/*
+						if reply.false, the longest time it takes from sending to this point is when RPC call fails,
+						the timeout time of that.
+						even reply.true, it can take that long as well
+						so we can't close the chan before that.
+						We close this channel when this server gets elected again, but if this happens too soon,
+						reply can still send to a closed channel, the server will panic, other servers can continue election.
+						RPC timeout should smaller than election timeout to avoid closed channel causing false fails.
+					*/
 					rf.trailingReplyChan <- reply
 				}
 			}
@@ -461,14 +467,11 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 
 		// retry
 		time.Sleep(time.Duration(REAPPENDTIMEOUT) * time.Millisecond)
-		if rf.killed() || !rf.isLeader() {
-			break
-		}
 
 		// need to decrement nextIndices[server] if mismatched
 		if reply.MisMatched {
 			/*
-				suppose Start(comm1), Start(comm2)
+				suppose AppendCommand(comm1), AppendCommand(comm2)
 				rf.nextIndices[server] can be higher or lower than issuedIndex-1
 			*/
 			rf.mu.Lock()
@@ -481,11 +484,18 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 	}
 }
 
+/*
+just update matchIndices and nextIndices of the server,
+created when the server becomes the leader,
+and destroyed exactly before the server becomes the leader by close(rf.trailingReplyChan)
+matchIndices and nextIndices are volatile, it doesn't matter to update them,
+it can update the commitIndex, but it's not necessary since this state is non-volatile and writing to a failed server may have problems
+false replies are ignored, including the ones with higherTerm
+*/
 func (rf *Raft) HandleTrailingReply() {
-	// just update matchIndices and nextIndices
-	DPrintf("HandleTrailingReply gets running....")
+	AppendEntriesDPrintf("HandleTrailingReply gets running....")
 	for reply := range rf.trailingReplyChan {
-		DPrintf("HandleTrailingReply got Reply: %v", reply)
+		AppendEntriesDPrintf("HandleTrailingReply got Reply: %v", reply)
 		if !reply.Success {
 			// ignore highIndex which can invalidate the current leader
 			continue
@@ -506,31 +516,10 @@ func (rf *Raft) HandleTrailingReply() {
 
 }
 
-// func (rf *Raft) HandleTrailingReply() {
-// 	// just update matchIndices and nextIndices
-// 	DPrintf("HandleTrailingReply gets running....")
-// 	for reply := range rf.trailingReplyChan {
-// 		DPrintf("HandleTrailingReply got Reply: %v", reply)
-// 		if !reply.Success {
-// 			// ignore highIndex which can invalidate the current leader
-// 			continue
-// 		}
-// 		rf.mu.Lock()
-
-// 		if rf.matchIndices[reply.Server] < reply.LastAppendIndex {
-// 			rf.matchIndices[reply.Server] = reply.LastAppendIndex
-// 		}
-
-// 		if rf.nextIndices[reply.Server] < reply.LastAppendIndex+1 {
-// 			rf.nextIndices[reply.Server] = reply.LastAppendIndex + 1
-// 		}
-
-// 		rf.mu.Unlock()
-
-// 	}
-
-// }
-
+/*
+send the commands which are committed but not applied to ApplyCh
+the same command may be sent multiple times, the service will need to de-duplicate the commands when executing them
+*/
 func (rf *Raft) ApplyCommand() {
 	rf.mu.Lock()
 	lastApplied := rf.lastApplied
@@ -580,8 +569,8 @@ func (rf *Raft) updateCommit() {
 
 /*
 don't check !rf.killed() && rf.isLeader()
-the Start() thread checks the leader validation,
-timer should quit after receiving loop in Start()
+the AppendCommand() thread checks the leader validation,
+timer should quit after receiving loop in AppendCommand()
 */
 func (rf *Raft) CheckCommitTimeOut(quitChan chan int, timerChan chan int) {
 

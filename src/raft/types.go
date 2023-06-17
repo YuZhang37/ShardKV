@@ -1,8 +1,9 @@
 package raft
 
 import (
-	"6.824/labrpc"
 	"sync"
+
+	"6.824/labrpc"
 )
 
 // as each Raft peer becomes aware that successive log entries are
@@ -47,11 +48,6 @@ const (
 	RANDOMRANGE        int = 1000
 	CHECKCOMMITTIMEOUT int = 25
 	REAPPENDTIMEOUT    int = 50
-)
-
-const (
-	QUITWITHVALIDLEADER   int = 1
-	QUITWITHINVALIDLEADER int = 2
 )
 
 type LogEntry struct {

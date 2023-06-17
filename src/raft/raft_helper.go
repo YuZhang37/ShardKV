@@ -1,8 +1,9 @@
 package raft
 
 import (
-	"6.824/labrpc"
 	"sync/atomic"
+
+	"6.824/labrpc"
 )
 
 // the service or tester wants to create a Raft server. the ports
@@ -36,6 +37,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.nextIndices = make([]int, len(rf.peers))
 	rf.matchIndices = make([]int, len(rf.peers))
 	rf.issuedEntryIndices = make([]int, len(rf.peers))
+	rf.trailingReplyChan = make(chan AppendEntriesReply)
 
 	rf.hbTimeOut = HBTIMEOUT
 	rf.eleTimeOut = ELETIMEOUT

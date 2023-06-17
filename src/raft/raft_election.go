@@ -185,6 +185,10 @@ func (rf *Raft) Election(timeout int) {
 			}
 			go rf.HeartBeat(i)
 		}
+
+		// stop the previous rf.trailingReplyChan if this server was a leader
+		close(rf.trailingReplyChan)
+
 		rf.trailingReplyChan = make(chan AppendEntriesReply)
 		go rf.HandleTrailingReply()
 		DPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
