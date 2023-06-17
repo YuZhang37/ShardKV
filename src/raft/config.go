@@ -8,19 +8,23 @@ package raft
 // test with the original before submitting.
 //
 
-import "6.824/labgob"
-import "6.824/labrpc"
-import "bytes"
-import "log"
-import "sync"
-import "testing"
-import "runtime"
-import "math/rand"
-import crand "crypto/rand"
-import "math/big"
-import "encoding/base64"
-import "time"
-import "fmt"
+import (
+	"bytes"
+	"log"
+	"math/rand"
+	"runtime"
+	"sync"
+	"testing"
+
+	"6.824/labgob"
+	"6.824/labrpc"
+
+	crand "crypto/rand"
+	"encoding/base64"
+	"fmt"
+	"math/big"
+	"time"
+)
 
 func randstring(n int) string {
 	b := make([]byte, 2*n)
@@ -138,7 +142,7 @@ func (cfg *config) checkLogs(i int, m ApplyMsg) (string, bool) {
 	v := m.Command
 	for j := 0; j < len(cfg.logs); j++ {
 		if old, oldok := cfg.logs[j][m.CommandIndex]; oldok && old != v {
-			log.Printf("%v: log %v; server %v\n", i, cfg.logs[i], cfg.logs[j])
+			DPrintf("%v: log %v; server %v\n", i, cfg.logs[i], cfg.logs[j])
 			// some server has already committed a different value for this entry!
 			err_msg = fmt.Sprintf("commit index=%v server=%v %v != server=%v %v",
 				m.CommandIndex, i, m.Command, j, old)
@@ -230,13 +234,11 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 	}
 }
 
-//
 // start or re-start a Raft.
 // if one already exists, "kill" it first.
 // allocate new outgoing port file names, and a new
 // state persister, to isolate previous instance of
 // this server. since we cannot really kill it.
-//
 func (cfg *config) start1(i int, applier func(int, chan ApplyMsg)) {
 	cfg.crash1(i)
 
@@ -429,31 +431,6 @@ func (cfg *config) checkNoLeader() {
 	}
 }
 
-// how many servers think a log entry is committed?
-func (cfg *config) nCommitted(index int) (int, interface{}) {
-	count := 0
-	var cmd interface{} = nil
-	for i := 0; i < len(cfg.rafts); i++ {
-		if cfg.applyErr[i] != "" {
-			cfg.t.Fatal(cfg.applyErr[i])
-		}
-
-		cfg.mu.Lock()
-		cmd1, ok := cfg.logs[i][index]
-		cfg.mu.Unlock()
-
-		if ok {
-			if count > 0 && cmd != cmd1 {
-				cfg.t.Fatalf("committed values do not match: index %v, %v, %v\n",
-					index, cmd, cmd1)
-			}
-			count += 1
-			cmd = cmd1
-		}
-	}
-	return count, cmd
-}
-
 // wait for at least n servers to commit.
 // but don't wait forever.
 func (cfg *config) wait(index int, n int, startTerm int) interface{} {
@@ -485,6 +462,38 @@ func (cfg *config) wait(index int, n int, startTerm int) interface{} {
 	return cmd
 }
 
+// how many servers think a log entry is committed?
+func (cfg *config) nCommitted(index int) (int, interface{}) {
+	count := 0
+	var cmd interface{} = nil
+	for i := 0; i < len(cfg.rafts); i++ {
+		if cfg.applyErr[i] != "" {
+			cfg.t.Fatal(cfg.applyErr[i])
+		}
+
+		cfg.mu.Lock()
+		cmd1, ok := cfg.logs[i][index]
+		cfg.rafts[i].mu.Lock()
+		// leader := cfg.rafts[i].currentLeader
+		cfg.rafts[i].mu.Unlock()
+		cfg.mu.Unlock()
+
+		// DPrintf("server %v takes %v as a leader\n", i, leader)
+		// DPrintf("server %v log is %v\n", i, cfg.rafts[i].log)
+		// DPrintf("server %v commit index is %v\n", i, cfg.rafts[i].commitIndex)
+		DPrintf("cmd1: %v, ok: %v\n", cmd1, ok)
+		if ok {
+			if count > 0 && cmd != cmd1 {
+				cfg.t.Fatalf("committed values do not match: index %v, %v, %v\n",
+					index, cmd, cmd1)
+			}
+			count += 1
+			cmd = cmd1
+		}
+	}
+	return count, cmd
+}
+
 // do a complete agreement.
 // it might choose the wrong leader initially,
 // and have to re-submit after giving up.
@@ -512,7 +521,8 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			}
 			cfg.mu.Unlock()
 			if rf != nil {
-				index1, _, ok := rf.Start(cmd)
+				index1, term, ok := rf.Start(cmd)
+				DPrintf("result from start: %v, %v, %v\n", index1, term, ok)
 				if ok {
 					index = index1
 					break
@@ -523,9 +533,12 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 		if index != -1 {
 			// somebody claimed to be the leader and to have
 			// submitted our command; wait a while for agreement.
+			DPrintf("%v got appended at %v\n", cmd, index)
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
+				DPrintf("%v servers think %v is committed.\n", nd, cmd1)
+				DPrintf("cmd1: %v, cmd: %v\n", cmd1, cmd)
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd1 == cmd {
@@ -533,7 +546,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 						return index
 					}
 				}
-				time.Sleep(20 * time.Millisecond)
+				time.Sleep(500 * time.Millisecond)
 			}
 			if retry == false {
 				cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
