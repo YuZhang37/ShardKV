@@ -7,6 +7,7 @@ const Debug = false
 const DebugElection = false
 const DebugAppendEntries = false
 const DebugHeartbeat = false
+const DebugPersistence = false
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug {
@@ -41,6 +42,13 @@ func AppendEntries2DPrintf(funct int, format string, a ...interface{}) (n int, e
 		log.Printf(format, a...)
 	}
 	if funct == 2 && DebugHeartbeat {
+		log.Printf(format, a...)
+	}
+	return
+}
+
+func PersistenceDPrintf(format string, a ...interface{}) (n int, err error) {
+	if DebugPersistence {
 		log.Printf(format, a...)
 	}
 	return

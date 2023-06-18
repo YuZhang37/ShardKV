@@ -1,10 +1,8 @@
 package raft
 
 import (
-	//	"bytes"
 	"log"
 	"time"
-	//	"6.824/labgob"
 )
 
 // for heartbeat: send and harvest is 1 on 1, and send part definitely sends to the channel, no need for stopChan
@@ -31,9 +29,11 @@ func (rf *Raft) HarvestHeartbeatReply(replyChan chan AppendEntriesReply) {
 	if !reply.Success && reply.HigherTerm {
 		rf.mu.Lock()
 		rf.currentTerm = reply.Term
+		rf.votedFor = -1
 		rf.role = FOLLOWER
 		rf.msgReceived = false
 		rf.currentLeader = -1
+		rf.persist()
 		rf.mu.Unlock()
 
 	}
@@ -76,6 +76,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Command: command,
 	}
 	rf.log = append(rf.log, entry)
+	rf.persist()
 
 	AppendEntriesDPrintf("Command is appended on %v at index of %v\n", rf.me, len(rf.log))
 
@@ -199,6 +200,8 @@ func (rf *Raft) TryCommit(ch0 chan AppendEntriesReply, timerChan chan int, numOf
 				// this server may be the new leader or just a follower or a candidate
 				rf.role = FOLLOWER
 				rf.currentTerm = reply.Term
+				rf.votedFor = -1
+				rf.persist()
 				// all threads need to be stopped
 				tryCommit = false
 			}
@@ -267,7 +270,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// follower or candidate or leader with smaller term (≤ args.Term)
 	if rf.currentLeader != args.LeaderId || rf.currentTerm != args.Term {
-		rf.currentTerm = args.Term
+		if rf.currentTerm < args.Term {
+			rf.currentTerm = args.Term
+			rf.votedFor = -1
+		}
 		rf.role = FOLLOWER
 		rf.currentLeader = args.LeaderId
 		rf.currentReceived = 0
@@ -281,6 +287,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		// log doesn't contain an entry at PrevLogIndex
 		reply.Success = false
 		reply.MisMatched = true
+		rf.persist()
 		return
 	}
 
@@ -288,6 +295,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		// log entry at PrevLogIndex doesn't equal to PrevLogTerm
 		reply.Success = false
 		reply.MisMatched = true
+		rf.persist()
 		return
 	}
 
@@ -327,7 +335,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			}
 			rf.currentReceived = args.Entries[len(args.Entries)-1].Index
 			reply.LastAppendIndex = len(rf.log)
+			rf.persist()
 		}
+
 	}
 
 	//update commitIndex both for heartbeat and appendEntries
@@ -409,6 +419,7 @@ func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 // although harvest may issue lots of sends
 // but at any point in time, there is exactly one send and one harvest
 // and send part are ensured to send to the channel exactly once
+// handle retries
 func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan AppendEntriesReply, stopChan chan int, getReplyChan chan AppendEntriesReply) {
 	/*
 		get reply and handle retries

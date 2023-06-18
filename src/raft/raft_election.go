@@ -1,16 +1,12 @@
 package raft
 
 import (
-	//	"bytes"
-	// "log"
 	"math/rand"
 	"time"
-	//	"6.824/labgob"
 )
 
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	// Your code here (2A, 2B).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	reply.Server = rf.me
@@ -29,7 +25,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if logSize > 0 {
 		up_to_date = args.LastLogTerm > rf.log[logSize-1].Term || (args.LastLogTerm == rf.log[logSize-1].Term && args.LastLogIndex >= logSize)
 		DPrintf(" %v up-to-date as %v: %v\n", args.CandidateId, rf.me, up_to_date)
-		DPrintf(".....args.LastLogTerm: %v, rf.log[logSize-1].Term: %v, args.LastLogIndex: %v, logSize: %v\n....\n", args.LastLogTerm, rf.log[logSize-1].Term, args.LastLogIndex, logSize)
 	}
 
 	if up_to_date && (rf.votedFor == -1 || rf.votedFor == args.CandidateId) {
@@ -42,15 +37,26 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.VoteGranted = false
 		DPrintf(" %v already votes for %v at term %v\n", rf.me, rf.votedFor, rf.currentTerm)
 	}
+	/*
+		before the reply is sent back to the candidate,
+		if the server crashes, it behaves just like the server never receives the request.
+	*/
+	rf.persist()
 }
 
+/*
+this function is guaranteed to return
+and send exact one reply to ch, the max time latency is RPC call timeout
+max RPC call time must be << election timeout, otherwise,
+before previous election returns result, new election is issued,
+the leader won't be able to be selected.
+*/
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, ch chan RequestVoteReply) {
-	// may need to repeat
 	reply := RequestVoteReply{}
 	ok := rf.peers[server].Call("Raft.RequestVote", args, &reply)
 	if !ok {
 		reply.Server = server
-		reply.Term = 0
+		reply.Term = 0 // the election will take max()
 		reply.VoteGranted = false
 	}
 	ch <- reply
@@ -79,7 +85,11 @@ func (rf *Raft) ticker() {
 			continue
 		}
 		// follower or candidate, not receiving msg
-		go rf.Election(randomTime + rf.eleTimeOut)
+		go rf.Election()
+
+		DPrintf("%v timeout: %v at term %v\n", rf.me, randomTime+rf.eleTimeOut, rf.currentTerm)
+		DPrintf("\n%v will start election at term %v\n", rf.me, rf.currentTerm+1)
+
 		// may need to add some logic to timinate the election if not finished before election timeout
 		rf.mu.Unlock()
 	}
@@ -106,11 +116,22 @@ the outdated voting may establish a stale leader,
 not a problem, when it sends out requests, it will contacted by higher term and it turns to follower.
 for correctness, no need to terminate,
 but for memory efficiency, probably should
+
+ELection function is long, may need to refactor to small pieces
 */
 
-func (rf *Raft) Election(timeout int) {
+func (rf *Raft) Election() {
 
 	rf.mu.Lock()
+	/*
+		between detecting msgReceived false and Election(), there can be other candidates request to vote, and the server votes for that candidate, updating currentTerm and votedFor
+	*/
+	if rf.msgReceived {
+		rf.mu.Unlock()
+		return
+	}
+
+	// change all relevant states to be candidate
 	rf.role = CANDIDATE
 	rf.currentLeader = -1
 	rf.currentTerm++
@@ -126,10 +147,12 @@ func (rf *Raft) Election(timeout int) {
 		LastLogTerm:  lastTerm,
 	}
 	term := rf.currentTerm
-	rf.mu.Unlock()
-	DPrintf("\n%v starts election at term %v\n", rf.me, term)
-	DPrintf("%v timeout: %v at term %v\n", rf.me, timeout, term)
 
+	// not necessary to persist here, if the server crashes, it can start over the election with previous term just like crash before starting election
+	rf.persist()
+	rf.mu.Unlock()
+
+	// receive vote replies from all sending goroutines
 	ch := make(chan RequestVoteReply)
 	for i := 0; i < len(rf.peers); i++ {
 		if i == rf.me {
@@ -138,12 +161,15 @@ func (rf *Raft) Election(timeout int) {
 		go rf.sendRequestVote(i, &args, ch)
 	}
 
-	highestTerm := args.Term // rf.Term will only be updated when request voting failed and got higher term
+	highestTerm := args.Term
 	countVotes := 1
-	for i := 0; i < len(rf.peers)-1; i++ {
+	i := 0
+	for i = 0; i < len(rf.peers)-1; i++ {
 		reply := <-ch
 		if reply.Term > highestTerm {
+			// request vote for reply.Term failed
 			highestTerm = reply.Term
+			break
 		}
 		if reply.VoteGranted {
 			countVotes++
@@ -152,15 +178,17 @@ func (rf *Raft) Election(timeout int) {
 			DPrintf("%v doesn't grant vote to %v at term %v\n", reply.Server, rf.me, term)
 		}
 		if countVotes >= len(rf.peers)/2+1 {
-			//unblock the sendRequestVote gorountines
-			go func(count int) {
-				for i := 0; i < count; i++ {
-					<-ch
-				}
-			}(len(rf.peers) - 1 - i - 1)
 			break
 		}
 	}
+
+	//unblock the sendRequestVote goroutines
+	go func(count int) {
+		for i := 0; i < count; i++ {
+			<-ch
+		}
+	}(len(rf.peers) - 1 - i - 1)
+
 	DPrintf("total votes: %v to %v at term %v\n", countVotes, rf.me, term)
 	rf.mu.Lock()
 	/*
@@ -193,11 +221,6 @@ func (rf *Raft) Election(timeout int) {
 		go rf.HandleTrailingReply()
 		DPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
 	} else {
-		/*
-			only when the candidate can't get the majority of the votes
-			it needs to update the term with the highest one ever seen,
-			when the leader issues the first hearbeats, and get response from the servers with higher term, this leader will be back to follower.
-		*/
 		if highestTerm > rf.currentTerm {
 			rf.currentTerm = highestTerm
 		}

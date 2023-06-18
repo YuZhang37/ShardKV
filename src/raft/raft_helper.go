@@ -26,6 +26,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// Your initialization code here (2A, 2B, 2C).
 	rf.commitIndex = 0
 	rf.lastApplied = 0
+
+	// persistent states
 	rf.currentTerm = 0
 	rf.votedFor = -1
 	rf.log = make([]LogEntry, 0)
@@ -44,7 +46,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.randomRange = RANDOMRANGE
 
 	// initialize from state persisted before a crash
-	rf.readPersist(persister.ReadRaftState())
+	recover := rf.readPersist(persister.ReadRaftState())
+	if !recover {
+		PersistenceDPrintf("not recovered, persist initialization\n")
+		rf.persist()
+	} else {
+		PersistenceDPrintf("Recover form previous state\n")
+	}
 
 	// start ticker goroutine to start elections
 	go rf.ticker()

@@ -76,8 +76,10 @@ type Raft struct {
 
 	// need to be persistent
 	currentTerm int
-	votedFor    int // -1 for nil, new term will reset to -1, initialized to -1
-	log         []LogEntry
+	// -1 for nil, new term will reset to -1, initialized to -1
+	// every time currentTerm increments, votedFor needs to reset
+	votedFor int
+	log      []LogEntry
 
 	// records what the current leader is, used to redirect requests, but this information may be outdated
 	// update when valid appendEntries request comes
