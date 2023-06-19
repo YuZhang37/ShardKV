@@ -18,22 +18,20 @@ func (rf *Raft) HeartBeat(server int) {
 
 /*
 heartbeat will only update the followers's commitIndex
-and leader's term
+and update the term on leader if a reply with higher term
+don't handle the failed RPC calls and mismatched logs
 */
 func (rf *Raft) HarvestHeartbeatReply(replyChan chan AppendEntriesReply) {
 	reply := <-replyChan
 	if rf.killed() || !rf.isLeader() {
 		return
 	}
-	// only deals with heartbeats
-	if !reply.Success && reply.HigherTerm {
+	// only deals with replies with higher terms
+	if reply.HigherTerm {
 		rf.mu.Lock()
-		rf.currentTerm = reply.Term
-		rf.votedFor = -1
-		rf.role = FOLLOWER
 		rf.msgReceived = false
-		rf.currentLeader = -1
-		rf.persist()
+		originalTerm := rf.onReceiveHigherTerm(reply.Term)
+		rf.persist("server %v heartbeat replies on %v with higher term: %v, original term: %v", rf.me, reply.Server, reply.Term, originalTerm)
 		rf.mu.Unlock()
 
 	}
@@ -55,18 +53,18 @@ the leader.
 
 if the command sends to the valid leader, entry will be appended to the leader's local log and returns index, term, true,
 an AppendCommand goroutine is issued to commit the command
-otherwise returns 0, 0, false
+otherwise returns -1, -1, false
 */
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
 	if rf.killed() || rf.role != LEADER {
-		AppendEntriesDPrintf("Command sends to %v, which is not a leader, the leader is %v\n", rf.me, rf.currentLeader)
+		AppendEntriesDPrintf("Command %v sends to %v, which is not a leader, the leader is %v\n", command, rf.me, rf.currentLeader)
 		return -1, -1, false
 	}
 
-	AppendEntriesDPrintf("Command sends to %v, which is a leader\n", rf.me)
+	AppendEntriesDPrintf("Command %v sends to %v, which is a leader for term: %v\n", command, rf.me, rf.currentTerm)
 	AppendEntriesDPrintf("Start processing...\n")
 
 	//append to the leader's local log
@@ -76,9 +74,9 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Command: command,
 	}
 	rf.log = append(rf.log, entry)
-	rf.persist()
+	rf.persist("server %v appends entry %v to its log", rf.me, entry)
 
-	AppendEntriesDPrintf("Command is appended on %v at index of %v\n", rf.me, len(rf.log))
+	AppendEntriesDPrintf("Command %v is appended on %v at index of %v\n", command, rf.me, len(rf.log))
 
 	go rf.AppendCommand(entry.Index)
 	return entry.Index, entry.Term, true
@@ -189,19 +187,17 @@ func (rf *Raft) TryCommit(ch0 chan AppendEntriesReply, timerChan chan int, numOf
 			if reply.Success {
 				successCount++
 				// to cover the case AppendCommand(comm2) finishes before AppendCommand(comm1)
-				if rf.matchIndices[reply.Server] < reply.LastAppendIndex {
-					rf.matchIndices[reply.Server] = reply.LastAppendIndex
+				if rf.matchIndices[reply.Server] < reply.LastAppendedIndex {
+					rf.matchIndices[reply.Server] = reply.LastAppendedIndex
 				}
-				if rf.nextIndices[reply.Server] < reply.LastAppendIndex+1 {
-					rf.nextIndices[reply.Server] = reply.LastAppendIndex + 1
+				if rf.nextIndices[reply.Server] < reply.LastAppendedIndex+1 {
+					rf.nextIndices[reply.Server] = reply.LastAppendedIndex + 1
 				}
-			} else if reply.HigherTerm {
+			} else if reply.HigherTerm && reply.Term > rf.currentTerm {
 				// contact a server with higher term
 				// this server may be the new leader or just a follower or a candidate
-				rf.role = FOLLOWER
-				rf.currentTerm = reply.Term
-				rf.votedFor = -1
-				rf.persist()
+				originalTerm := rf.onReceiveHigherTerm(reply.Term)
+				rf.persist("server %v try to commit %v replies on %v with higher term: %v, original term: %v", rf.me, entry, reply.Server, reply.Term, originalTerm)
 				// all threads need to be stopped
 				tryCommit = false
 			}
@@ -215,7 +211,7 @@ func (rf *Raft) TryCommit(ch0 chan AppendEntriesReply, timerChan chan int, numOf
 			}
 			rf.mu.Unlock()
 		case <-timerChan:
-			rf.updateCommit()
+			rf.updateCommit(entry.Index)
 			rf.mu.Lock()
 			// start(comm2) may commit a higher index
 			if rf.commitIndex >= entry.Index {
@@ -244,9 +240,14 @@ func (rf *Raft) QuitBlockedHarvests(numOfPeers int, harvestedServers map[int]boo
 	}
 }
 
+/*
+	follower or candidate server will execute this function for heartbeat or appendEntries,
+
+args.IssueEntryIndex is -1 no entries for heartbeat
+*/
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	funct := 1
-	if len(args.Entries) == 0 {
+	if args.IssueEntryIndex == -1 {
 		funct = 2
 	}
 
@@ -258,44 +259,58 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	reply.Server = rf.me
 	reply.Term = rf.currentTerm
 	reply.IssueEntryIndex = args.IssueEntryIndex
+	reply.NextIndex = args.PrevLogIndex + 1
 
 	if rf.currentTerm > args.Term {
 		// leader contacts one server with higher term
 		reply.Success = false
 		reply.HigherTerm = true
 		reply.MisMatched = false
-		reply.LastAppendIndex = 0
+		reply.LastAppendedIndex = 0
 		return
 	}
 
-	// follower or candidate or leader with smaller term (≤ args.Term)
-	if rf.currentLeader != args.LeaderId || rf.currentTerm != args.Term {
-		if rf.currentTerm < args.Term {
-			rf.currentTerm = args.Term
-			rf.votedFor = -1
-		}
+	/**** process both heartbeats and appendEntries ****/
+
+	// 1. follower or candidate or leader with smaller term (< args.Term)
+	// 2. candidate with term = args.Term, if -1, then it's the first time this server contacts with the leader, updates all states just like encountering a higher term.
+	// => when leader sends out the first heartbeat, all followers's leader will be set to be it, and votedFor will be reset to be -1
+	// 2 is wrong, can lead to split brain
+
+	persist_state := false
+	if rf.currentTerm < args.Term {
+		rf.onReceiveHigherTerm(args.Term)
+		persist_state = true
+		rf.currentLeader = args.LeaderId
+	} else if rf.currentLeader == -1 {
+		// must be a candidate with term == leader's term and currentLeader being -1,
 		rf.role = FOLLOWER
 		rf.currentLeader = args.LeaderId
-		rf.currentReceived = 0
+		rf.currentAppended = 0
 	}
 
+	// valid heartbeat or appendEntries
 	rf.msgReceived = true
 
 	reply.HigherTerm = false
 
 	if len(rf.log) < args.PrevLogIndex {
-		// log doesn't contain an entry at PrevLogIndex
+		// 1. log doesn't contain an entry at PrevLogIndex
 		reply.Success = false
 		reply.MisMatched = true
-		rf.persist()
+		if persist_state {
+			rf.persist("server %v log (shorter) mismatch with the leader", rf.me)
+		}
 		return
 	}
 
 	if args.PrevLogIndex > 1 && rf.log[args.PrevLogIndex-1].Term != args.PrevLogTerm {
-		// log entry at PrevLogIndex doesn't equal to PrevLogTerm
+		// 2. log entry at PrevLogIndex doesn't equal to PrevLogTerm
 		reply.Success = false
 		reply.MisMatched = true
-		rf.persist()
+		if persist_state {
+			rf.persist("server %v log (term) mismatch with the leader", rf.me)
+		}
 		return
 	}
 
@@ -304,46 +319,55 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	reply.MisMatched = false
 
 	// not a heartbeat
-	if len(args.Entries) > 0 {
-		if args.Entries[len(args.Entries)-1].Index <= rf.currentReceived {
-			// no newly appended entries in args
-			// suppose AppendCommand(comm1), AppendCommand(comm2)
-			// comm2 may get to the server earlier than comm1
-			// comm1 carries comm2
-			reply.LastAppendIndex = len(args.Entries)
-		} else {
-			// have new entries, append
-			// the server's log matches leader's log up through PrevLogIndex
-			// now appends new entries to the server's log
-			i, j := args.PrevLogIndex, 0
-			for i < len(rf.log) && j < len(args.Entries) {
-				if rf.log[i].Term != args.Entries[j].Term {
-					rf.log[i] = args.Entries[j]
-				}
-				i, j = i+1, j+1
-			}
+	// if args.IssueEntryIndex != -1 {
 
-			if i < len(rf.log) {
-				// removing unmatched trailing log entries in the server
-				rf.log = rf.log[:i]
+	// for appendEntries: args.Entries can still be empty if the nextIndices[Server] gets updated before preparing the args
+	// len(args.Entries) == 0 includes heartbeat and appendEntries
+	if len(args.Entries) == 0 || args.Entries[len(args.Entries)-1].Index <= rf.currentAppended {
+		/*
+			no new entries in args needed to append on the server
+			suppose AppendCommand(comm1), AppendCommand(comm2)
+			comm2 may get to the server earlier than comm1
+			comm1 carries comm2
+		*/
+		reply.LastAppendedIndex = rf.currentAppended
+	} else {
+		/*
+			new entries in args which need to append,
+			the server's log matches leader's log at least up through PrevLogIndex
+			now appends new entries to the server's log, the new entries may not start from PreLogIndex + 1
+		*/
+		i := args.PrevLogIndex
+		j := 0
+		for i < len(rf.log) && j < len(args.Entries) {
+			if rf.log[i].Term != args.Entries[j].Term {
+				rf.log[i] = args.Entries[j]
 			}
-
-			for j < len(args.Entries) {
-				// append new log entries to the server's log
-				rf.log = append(rf.log, args.Entries[j])
-				j++
-			}
-			rf.currentReceived = args.Entries[len(args.Entries)-1].Index
-			reply.LastAppendIndex = len(rf.log)
-			rf.persist()
+			i++
+			j++
 		}
 
+		if i < len(rf.log) {
+			// removing unmatched trailing log entries in the server
+			rf.log = rf.log[:i]
+		}
+
+		for j < len(args.Entries) {
+			// append new log entries to the server's log
+			rf.log = append(rf.log, args.Entries[j])
+			j++
+		}
+		rf.currentAppended = args.Entries[len(args.Entries)-1].Index
+		reply.LastAppendedIndex = len(rf.log)
+		rf.persist("server %v appends new entries to %v", rf.me, len(rf.log))
 	}
+
+	// }
 
 	//update commitIndex both for heartbeat and appendEntries
 	leaderCommitIndex := args.LeaderCommitIndex
-	if rf.currentReceived < leaderCommitIndex {
-		leaderCommitIndex = rf.currentReceived
+	if rf.currentAppended < leaderCommitIndex {
+		leaderCommitIndex = rf.currentAppended
 	}
 	if rf.commitIndex < leaderCommitIndex {
 		rf.commitIndex = leaderCommitIndex
@@ -357,14 +381,15 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 /*
 this function will guarantee to send to ch exact one reply, the longest time it takes is the RPC timeout.
-for heartbeat entries will be entries
+for heartbeat entries will be empty, issueEntryIndex is -1
 for appendEntries, entries will log[rf.nextIndices[server]-1:]
+it doesn't check if a higher issueEntryIndex is sent out
 */
 func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan AppendEntriesReply) {
 	rf.mu.Lock()
 
-	if rf.issuedEntryIndices[server] < issueEntryIndex {
-		rf.issuedEntryIndices[server] = issueEntryIndex
+	if rf.latestIssuedEntryIndices[server] < issueEntryIndex {
+		rf.latestIssuedEntryIndices[server] = issueEntryIndex
 	}
 	funct := 1
 	if issueEntryIndex < 0 {
@@ -404,10 +429,10 @@ func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 	reply := AppendEntriesReply{}
 	ok := rf.peers[server].Call("Raft.AppendEntries", &args, &reply)
 	if !ok {
-		// AppendEntriesDPrintf("Server %v RPC request vote to %v failed!\n", rf.me, server)
+		// RPC call failed
 		reply.Server = server
-		reply.IssueEntryIndex = 0
-		reply.LastAppendIndex = 0
+		reply.IssueEntryIndex = args.IssueEntryIndex
+		reply.LastAppendedIndex = 0
 		reply.Term = 0
 		reply.Success = false
 		reply.HigherTerm = false
@@ -446,11 +471,12 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 
 		*/
 		rf.mu.Lock()
-		hasHigherIndex := rf.issuedEntryIndices[reply.Server] > reply.IssueEntryIndex
+		hasHigherIndex := rf.latestIssuedEntryIndices[reply.Server] > reply.IssueEntryIndex
 		isLeader := rf.role == LEADER
-		rf.mu.Unlock()
+
 		quitMsg := 0
 		if reply.Success || reply.HigherTerm || hasHigherIndex || rf.killed() || !isLeader {
+			rf.mu.Unlock()
 			// include to
 			// detect the server is not a valid leader any more
 			// return a false reply, which will be discarded by AppendCommand
@@ -474,6 +500,8 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 				}
 			}
 			break
+		} else {
+			rf.mu.Unlock()
 		}
 
 		// retry
@@ -484,9 +512,12 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 			/*
 				suppose AppendCommand(comm1), AppendCommand(comm2)
 				rf.nextIndices[server] can be higher or lower than issuedIndex-1
+				if rf.nextIndices[reply.Server] != reply.NextIndex,
+				it means comm0 or comm2 may have updated nextIndices[Server]
+				this reply conveys outdated info, can't be used to update nextIndices[Server]
 			*/
 			rf.mu.Lock()
-			if rf.nextIndices[reply.Server] <= reply.IssueEntryIndex {
+			if rf.nextIndices[reply.Server] == reply.NextIndex {
 				rf.nextIndices[reply.Server]--
 			}
 			rf.mu.Unlock()
@@ -513,18 +544,18 @@ func (rf *Raft) HandleTrailingReply() {
 		}
 		rf.mu.Lock()
 
-		if rf.matchIndices[reply.Server] < reply.LastAppendIndex {
-			rf.matchIndices[reply.Server] = reply.LastAppendIndex
+		if rf.matchIndices[reply.Server] < reply.LastAppendedIndex {
+			rf.matchIndices[reply.Server] = reply.LastAppendedIndex
 		}
 
-		if rf.nextIndices[reply.Server] < reply.LastAppendIndex+1 {
-			rf.nextIndices[reply.Server] = reply.LastAppendIndex + 1
+		if rf.nextIndices[reply.Server] < reply.LastAppendedIndex+1 {
+			rf.nextIndices[reply.Server] = reply.LastAppendedIndex + 1
 		}
 
 		rf.mu.Unlock()
 
 	}
-
+	rf.quitTrailingReplyChan <- 1
 }
 
 /*
@@ -533,25 +564,26 @@ the same command may be sent multiple times, the service will need to de-duplica
 */
 func (rf *Raft) ApplyCommand() {
 	rf.mu.Lock()
-	lastApplied := rf.lastApplied
+	i := rf.lastApplied + 1
 	commitIndex := rf.commitIndex
 	rf.mu.Unlock()
-	i := lastApplied
-	for i < commitIndex {
+	for i <= commitIndex {
+		rf.mu.Lock()
 		msg := ApplyMsg{
 			CommandValid: true,
-			Command:      rf.log[i].Command, //committed logs will never be changed, no need for locks
-			CommandIndex: i + 1,
+			Command:      rf.log[i-1].Command, //committed logs will never be changed, no need for locks
+			CommandIndex: rf.log[i-1].Index,
 		}
+		rf.mu.Unlock()
 		rf.applyCh <- msg
 		rf.mu.Lock()
-		// i + 1
-		if rf.lastApplied < i+1 {
-			rf.lastApplied = i + 1
+		if rf.lastApplied < i {
+			rf.lastApplied = i
 			i++
 		} else {
-			i = rf.lastApplied
+			i = rf.lastApplied + 1
 		}
+		commitIndex = rf.commitIndex
 		rf.mu.Unlock()
 	}
 }
@@ -561,22 +593,39 @@ even leader turns to follower or server is killed
 we can still update the commitIndex since they are volatile
 before a new leader is elected
 */
-func (rf *Raft) updateCommit() {
+func (rf *Raft) updateCommit(index int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	smallestIndex := len(rf.log)
+	count := 1
 	for i := 0; i < len(rf.peers); i++ {
 		if i == rf.me {
 			continue
 		}
-		if rf.matchIndices[i] < smallestIndex {
-			smallestIndex = rf.matchIndices[i]
+		if rf.matchIndices[i] >= index {
+			count++
 		}
 	}
-	if smallestIndex != 0 && rf.log[smallestIndex-1].Term == rf.currentTerm && rf.commitIndex < smallestIndex {
-		rf.commitIndex = smallestIndex
+	if count > len(rf.peers)/2 && rf.commitIndex < index {
+		rf.commitIndex = index
 	}
 }
+
+// func (rf *Raft) updateCommit(index int) {
+// 	rf.mu.Lock()
+// 	defer rf.mu.Unlock()
+// 	smallestIndex := len(rf.log)
+// 	for i := 0; i < len(rf.peers); i++ {
+// 		if i == rf.me {
+// 			continue
+// 		}
+// 		if rf.matchIndices[i] < smallestIndex {
+// 			smallestIndex = rf.matchIndices[i]
+// 		}
+// 	}
+// 	if smallestIndex != 0 && rf.log[smallestIndex-1].Term == rf.currentTerm && rf.commitIndex < smallestIndex {
+// 		rf.commitIndex = smallestIndex
+// 	}
+// }
 
 /*
 don't check !rf.killed() && rf.isLeader()

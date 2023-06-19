@@ -9,6 +9,39 @@ const DebugAppendEntries = false
 const DebugHeartbeat = false
 const DebugPersistence = false
 
+// case 1:
+// const Debug = true
+// const DebugElection = true
+// const DebugAppendEntries = true
+// const DebugHeartbeat = true
+// const DebugPersistence = true
+
+// case 2:
+
+// const Debug = true
+// const DebugElection = false
+// const DebugAppendEntries = true
+// const DebugHeartbeat = false
+// const DebugPersistence = true
+
+// case 3:
+// const	Debug = true
+// const	DebugElection = true
+// const	DebugAppendEntries = false
+// const	DebugHeartbeat = true
+// const	DebugPersistence = true
+// case 4:
+// const Debug = false
+// const DebugElection = false
+// const DebugAppendEntries = true
+// const DebugHeartbeat = false
+// const DebugPersistence = true
+
+func DebugRaft(info int) {
+
+	log.Printf("Debug = %v, \nDebugElection = %v, \n DebugAppendEntries = %v, \n DebugHeartbeat = %v, \n DebugPersistence = %v\n", Debug, DebugElection, DebugAppendEntries, DebugHeartbeat, DebugPersistence)
+}
+
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug {
 		log.Printf(format, a...)
