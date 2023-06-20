@@ -17,15 +17,18 @@ import (
 // for any long-running work.
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
+
 	rf := &Raft{}
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
+	rf.dead = 0
 	rf.applyCh = applyCh
 
-	// Your initialization code here (2A, 2B, 2C).
 	rf.commitIndex = 0
 	rf.lastApplied = 0
+
+	// persistent states
 	rf.currentTerm = 0
 	rf.votedFor = -1
 	rf.log = make([]LogEntry, 0)
@@ -33,18 +36,29 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.role = FOLLOWER
 	rf.msgReceived = false
 	rf.currentLeader = -1
+	rf.currentAppended = 0
 
 	rf.nextIndices = make([]int, len(rf.peers))
 	rf.matchIndices = make([]int, len(rf.peers))
-	rf.issuedEntryIndices = make([]int, len(rf.peers))
+	rf.latestIssuedEntryIndices = make([]int, len(rf.peers))
 	rf.trailingReplyChan = make(chan AppendEntriesReply)
+	rf.quitTrailingReplyChan = make(chan int)
+	go func() {
+		rf.quitTrailingReplyChan <- 0
+	}()
 
 	rf.hbTimeOut = HBTIMEOUT
 	rf.eleTimeOut = ELETIMEOUT
 	rf.randomRange = RANDOMRANGE
 
 	// initialize from state persisted before a crash
-	rf.readPersist(persister.ReadRaftState())
+	recover := rf.readPersist(persister.ReadRaftState())
+	if !recover {
+		PersistenceDPrintf("Not previous state to recover from, persist initialization\n")
+		rf.persist("server %v initialization", rf.me)
+	} else {
+		PersistenceDPrintf("Recover form previous state\n")
+	}
 
 	// start ticker goroutine to start elections
 	go rf.ticker()
@@ -91,4 +105,27 @@ func (rf *Raft) isLeader() bool {
 	defer rf.mu.Unlock()
 	ans := rf.role
 	return ans == LEADER
+}
+
+/*
+must hold the lock rf.mu to call this function
+
+	rf.currentTerm = term
+	rf.role = FOLLOWER
+	rf.votedFor = -1
+	rf.currentLeader = -1
+	rf.currentAppended = 0
+
+need to call persist() since votedFor is changed
+*/
+func (rf *Raft) onReceiveHigherTerm(term int) int {
+	originalTerm := rf.currentTerm
+
+	rf.currentTerm = term
+	rf.role = FOLLOWER
+	rf.votedFor = -1
+	rf.currentLeader = -1
+	rf.currentAppended = 0
+
+	return originalTerm
 }

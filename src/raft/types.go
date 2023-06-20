@@ -6,6 +6,46 @@ import (
 	"6.824/labrpc"
 )
 
+/*
+	liveThreads  []bool
+	can't simply de-duplicate like this:
+
+	scenario 1:
+	thread 1: start(comm1) failed on some machines, no majority
+	thread 2: start(comm2) failed on some machines, no majority
+	if only retries on thread 1,
+	thread 2 will never get the majority and proceed,
+	although thread 1 can commit comm2,
+
+	solution:
+	constantly checking if comm2 is committed by the leader
+	if so, replies to the client
+	use a different channel from a different thread
+	checking every 10ms
+
+	thread 1 may commit the entry for thread 2
+	vice versa
+
+	another design:
+	for failed server, don't try infinitely if the majority has
+	responded successfully
+
+	if index1 is not committed yet, don't issue appendEntries for later index2 > index1, just append this entry in local leader log:
+	is this solution gonna be slower?
+	yes, if RPC takes long time, it affects performance
+
+	if not synchronize index1 and index2 and the majority
+	of the servers have failed:
+	rpc flooding to these servers
+
+	to avoid rpc flooding:
+	record largest new entry index
+	only retries with the largest new entry index
+	all other retries just return false replies
+	in the case of false replies, constantly checking
+	matchedIndices to see if the current entry is commited
+*/
+
 // as each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or
 // tester) on the same server, via the applyCh passed to Make(). set
@@ -19,6 +59,7 @@ type ApplyMsg struct {
 	CommandValid bool
 	Command      interface{}
 	CommandIndex int // index of the log for de-duplication on sending to the state machine
+	CommandTerm  int // for debugging
 
 	// For 2D:
 	SnapshotValid bool
@@ -36,6 +77,7 @@ type ApplyMsg struct {
 //	LEADER    Role = 3
 //
 // )
+
 const (
 	FOLLOWER  int32 = 1
 	CANDIDATE int32 = 2
@@ -65,83 +107,75 @@ type Raft struct {
 	dead      int32               // set by Kill()
 	applyCh   chan ApplyMsg
 
-	// Your data here (2A, 2B, 2C).
-	// Look at the paper's Figure 2 for a description of what
-	// state a Raft server must maintain.
-
-	// states for all servers (log index)
-	// log index always starts with 1, not the same as array index
+	/*
+		states for all servers (log index)
+		log index always starts with 1, not the same as array index
+		commitIndex and lastApplied don't need to be reset on leader change
+	*/
 	commitIndex int
 	lastApplied int
 
 	// need to be persistent
 	currentTerm int
-	votedFor    int // -1 for nil, new term will reset to -1, initialized to -1
-	log         []LogEntry
+	/*
+		-1 for nil, initialized to -1
+		every time currentTerm increments, votedFor needs to reset to -1
+	*/
+	votedFor int
+	log      []LogEntry
 
-	// records what the current leader is, used to redirect requests, but this information may be outdated
-	// update when valid appendEntries request comes
-	// reset when turns into candidate
-	currentLeader   int
-	currentReceived int
+	/*
+		records what the current leader is, used to redirect requests, but this information may be outdated
+		initialized to be -1
+		reset to -1 when turns into candidate/increment term
+		update to itself when turns into leader
+		update when a valid leader sends appendEntries or heartbeat to it
+		requestVote with higher term will reset to -1
+		=>
+		whenever the term changes regardless of the change on leader,
+		reset this to be -1. This term may or may not elect a valid leader
+		if there is a successful leader election, set this variable
+	*/
+	currentLeader int
+
+	/*
+		initialized to be 0,
+		whenever the term changes and a new valid leader is elected, reset to be 0, it happens when a valid heartbeat or appendEntries is received. When the server turns into candidate, the variable contains previous value
+		 =>
+		whenever the term changes regardless of the change on leader,
+		reset this to be 0. This term may or may not elect a valid leader
+		it turns into candidate or receive heartbeat or appendEntries from leader with higher term
+	*/
+	currentAppended int
 
 	role int32
 
-	// indicate if leader and valid candidate sends an rpc for depressing leader election
-	// set true when requestVote grants vote for other servers
-	// or appendEntries is received from a valid leader
-	// set false when timer goes off
+	/*
+		indicate if leader and valid candidate sends an rpc for
+		depressing leader election
+		set true when requestVote grants vote for other servers
+		or heartbeat or appendEntries is received from a valid leader
+		set false when timer goes off
+		leader will always have it on false
+	*/
 	msgReceived bool
 
-	// count the number of granted votes in election
-	// voteGranted int
-
 	// states on leader
-	nextIndices  []int
+
+	// reset to be [len(log)+1...len(log)+1] on successful leader election
+	nextIndices []int
+	// reset to be [0...0] on successful leader election
 	matchIndices []int
-	// keep track of the highest index of log entry which issues
-	// the Start() with all threads
-	issuedEntryIndices []int
-	trailingReplyChan  chan AppendEntriesReply
 	/*
-		liveThreads  []bool
-		can't simply de-duplicate like this:
-
-		scenario 1:
-		thread 1: start(comm1) failed on some machines, no majority
-		thread 2: start(comm2) failed on some machines, no majority
-		if only retries on thread 1,
-		thread 2 will never get the majority and proceed,
-		although thread 1 can commit comm2,
-
-		solution:
-		constantly checking if comm2 is committed by the leader
-		if so, replies to the client
-		use a different channel from a different thread
-		checking every 10ms
-
-		thread 1 may commit the entry for thread 2
-		vice versa
-
-		another design:
-		for failed server, don't try infinitely if the majority has
-		responded successfully
-
-		if index1 is not committed yet, don't issue appendEntries for later index2 > index1, just append this entry in local leader log:
-		is this solution gonna be slower?
-		yes, if RPC takes long time, it affects performance
-
-		if not synchronize index1 and index2 and the majority
-		of the servers have failed:
-		rpc flooding to these servers
-
-		to avoid rpc flooding:
-		record largest new entry index
-		only retries with the largest new entry index
-		all other retries just return false replies
-		in the case of false replies, constantly checking
-		matchedIndices to see if the current entry is commited
+		keep track of the latest index of log entry which starts appendEntries in all servers.
+		reset to be [0...0] on successful leader election
 	*/
+	latestIssuedEntryIndices []int
+
+	// close on successful leader election, to terminate the previous trailingReplay thread
+	trailingReplyChan chan AppendEntriesReply
+	// when we close chan, for reply := range rf.trailingReplyChan may not get executed immediately, need to coordinate
+	quitTrailingReplyChan chan int
 
 	// timeout fields
 	hbTimeOut   int
@@ -152,7 +186,6 @@ type Raft struct {
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
 type RequestVoteArgs struct {
-	// Your data here (2A, 2B).
 	Term         int
 	CandidateId  int
 	LastLogIndex int // starting from 1, 0 if no log
@@ -162,7 +195,6 @@ type RequestVoteArgs struct {
 // example RequestVote RPC reply structure.
 // field names must start with capital letters!
 type RequestVoteReply struct {
-	// Your data here (2A).
 	Term        int
 	VoteGranted bool
 	Server      int
@@ -180,17 +212,44 @@ type AppendEntriesArgs struct {
 }
 
 type AppendEntriesReply struct {
+
+	// info in request
 	Term   int
 	Server int
-	// index of the entry starting appendEntries
+	// NextIndex info from args
+	NextIndex int
+	/*
+		index of the entry starting appendEntries
+		for heartbeat, it's -1
+	*/
 	IssueEntryIndex int
 
 	Success bool
+
 	// when Success = false
 	// check these two to indicate why the request failed
-	// if both are false, it indicates a failed server or network partition
+	// if both are false, it indicates a failed RPC
 	HigherTerm bool
 	MisMatched bool
-	// index of the last entry appended by the server
-	LastAppendIndex int
+	// index of the last entry sent out by the leader and appended by the server, used by the leader to update matchIndices and nextIndices, 0 on false reply
+	LastAppendedIndex int
+
+	// args for optimization on mismatching logs, only used when MisMatched is true
+
+	// if the server has entry at prevIndex, then equals to the term of that entry, otherwise, -1
+	ConflictTerm int
+	// if the server has entry at prevIndex, then equals to the start index of the term of that entry, otherwise, -1
+	ConflictStartIndex int
+	// the length of the server's log, only used when ConflictTerm == -1, which means, LogLength < prevIndex
+	LogLength int
 }
+
+/*
+if a condition needs to check within a lock,
+and the condition may change when the code leaves the lock and acquires the lock again
+we need to keep checking the condition for correctness every time we leave the locked area and entering it again.
+
+critical thing:
+if a leader becomes a follower, it must not send appendEntries requests,
+otherwise, the servers will be in inconsistent states
+*/
