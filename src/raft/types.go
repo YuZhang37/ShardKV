@@ -59,6 +59,7 @@ type ApplyMsg struct {
 	CommandValid bool
 	Command      interface{}
 	CommandIndex int // index of the log for de-duplication on sending to the state machine
+	CommandTerm  int // for debugging
 
 	// For 2D:
 	SnapshotValid bool
@@ -232,4 +233,23 @@ type AppendEntriesReply struct {
 	MisMatched bool
 	// index of the last entry sent out by the leader and appended by the server, used by the leader to update matchIndices and nextIndices, 0 on false reply
 	LastAppendedIndex int
+
+	// args for optimization on mismatching logs, only used when MisMatched is true
+
+	// if the server has entry at prevIndex, then equals to the term of that entry, otherwise, -1
+	ConflictTerm int
+	// if the server has entry at prevIndex, then equals to the start index of the term of that entry, otherwise, -1
+	ConflictStartIndex int
+	// the length of the server's log, only used when ConflictTerm == -1, which means, LogLength < prevIndex
+	LogLength int
 }
+
+/*
+if a condition needs to check within a lock,
+and the condition may change when the code leaves the lock and acquires the lock again
+we need to keep checking the condition for correctness every time we leave the locked area and entering it again.
+
+critical thing:
+if a leader becomes a follower, it must not send appendEntries requests,
+otherwise, the servers will be in inconsistent states
+*/

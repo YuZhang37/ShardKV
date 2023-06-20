@@ -85,6 +85,10 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 func (rf *Raft) AppendCommand(index int) {
 
 	rf.mu.Lock()
+	if rf.killed() || rf.role != LEADER {
+		rf.mu.Unlock()
+		return
+	}
 	entry := rf.log[index-1]
 	numOfPeers := len(rf.peers)
 	AppendEntriesDPrintf("....AppendCommand at server %v: %v\n", rf.me, entry)
@@ -151,7 +155,7 @@ func (rf *Raft) AppendCommand(index int) {
 		ch <- 1
 	}(quitTimerChan)
 
-	rf.QuitBlockedHarvests(numOfPeers, harvestedServers, stopChans)
+	go rf.QuitBlockedHarvests(numOfPeers, harvestedServers, stopChans)
 
 	go rf.ApplyCommand()
 }
@@ -179,43 +183,51 @@ func (rf *Raft) TryCommit(ch0 chan AppendEntriesReply, timerChan chan int, numOf
 	tryCommit := true
 	harvestedServers := make(map[int]bool)
 
-	for tryCommit && !rf.killed() && rf.isLeader() {
+	for tryCommit {
 		select {
 		case reply := <-ch0:
 			harvestedServers[reply.Server] = true
 			rf.mu.Lock()
-			if reply.Success {
-				successCount++
-				// to cover the case AppendCommand(comm2) finishes before AppendCommand(comm1)
-				if rf.matchIndices[reply.Server] < reply.LastAppendedIndex {
-					rf.matchIndices[reply.Server] = reply.LastAppendedIndex
-				}
-				if rf.nextIndices[reply.Server] < reply.LastAppendedIndex+1 {
-					rf.nextIndices[reply.Server] = reply.LastAppendedIndex + 1
-				}
-			} else if reply.HigherTerm && reply.Term > rf.currentTerm {
-				// contact a server with higher term
-				// this server may be the new leader or just a follower or a candidate
-				originalTerm := rf.onReceiveHigherTerm(reply.Term)
-				rf.persist("server %v try to commit %v replies on %v with higher term: %v, original term: %v", rf.me, entry, reply.Server, reply.Term, originalTerm)
-				// all threads need to be stopped
+			if rf.killed() || rf.role != LEADER {
 				tryCommit = false
-			}
-			// the reply when failed with higher issue index is dropped
+			} else {
+				if reply.Success {
+					successCount++
+					// to cover the case AppendCommand(comm2) finishes before AppendCommand(comm1)
+					if rf.matchIndices[reply.Server] < reply.LastAppendedIndex {
+						rf.matchIndices[reply.Server] = reply.LastAppendedIndex
+					}
+					if rf.nextIndices[reply.Server] < reply.LastAppendedIndex+1 {
+						rf.nextIndices[reply.Server] = reply.LastAppendedIndex + 1
+					}
+				} else if reply.HigherTerm && reply.Term > rf.currentTerm {
+					// contact a server with higher term
+					// this server may be the new leader or just a follower or a candidate
+					originalTerm := rf.onReceiveHigherTerm(reply.Term)
+					rf.persist("server %v try to commit %v replies on %v with higher term: %v, original term: %v", rf.me, entry, reply.Server, reply.Term, originalTerm)
+					// all threads need to be stopped
+					tryCommit = false
+				}
+				// the reply when failed with higher issue index is dropped
 
-			if successCount > numOfPeers/2 {
-				if rf.commitIndex < entry.Index {
-					rf.commitIndex = entry.Index
+				if successCount > numOfPeers/2 {
+					if rf.commitIndex < entry.Index {
+						rf.commitIndex = entry.Index
+					}
+					tryCommit = false
 				}
-				tryCommit = false
 			}
 			rf.mu.Unlock()
 		case <-timerChan:
-			rf.updateCommit(entry.Index)
 			rf.mu.Lock()
-			// start(comm2) may commit a higher index
-			if rf.commitIndex >= entry.Index {
+			if rf.killed() || rf.role != LEADER {
 				tryCommit = false
+			} else {
+				rf.updateCommit(entry.Index)
+				// start(comm2) may commit a higher index
+				if rf.commitIndex >= entry.Index {
+					tryCommit = false
+				}
 			}
 			rf.mu.Unlock()
 		}
@@ -293,14 +305,17 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.msgReceived = true
 
 	reply.HigherTerm = false
+	reply.LogLength = len(rf.log)
 
 	if len(rf.log) < args.PrevLogIndex {
 		// 1. log doesn't contain an entry at PrevLogIndex
 		reply.Success = false
 		reply.MisMatched = true
 		if persist_state {
-			rf.persist("server %v log (shorter) mismatch with the leader", rf.me)
+			rf.persist("server %v log (shorter) mismatch with the leader: %v", rf.me, args)
 		}
+		reply.ConflictTerm = -1
+		reply.ConflictStartIndex = -1
 		return
 	}
 
@@ -309,8 +324,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = false
 		reply.MisMatched = true
 		if persist_state {
-			rf.persist("server %v log (term) mismatch with the leader", rf.me)
+			rf.persist("server %v log (term) mismatch with the leader: %v", rf.me, args)
 		}
+		reply.ConflictTerm = rf.log[args.PrevLogIndex-1].Term
+		reply.ConflictStartIndex = rf.findStartIndex(reply.ConflictTerm)
 		return
 	}
 
@@ -359,7 +376,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		}
 		rf.currentAppended = args.Entries[len(args.Entries)-1].Index
 		reply.LastAppendedIndex = len(rf.log)
-		rf.persist("server %v appends new entries to %v", rf.me, len(rf.log))
+		rf.persist("server %v appends new entries %v to %v", rf.me, args, len(rf.log))
 	}
 
 	// }
@@ -379,14 +396,68 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 }
 
+// the calling function holds the lock rf.mu
+// guarantee at least one entry exists for this term
+// find the first entry whose term equals to the target term
+func (rf *Raft) findStartIndex(term int) int {
+	left, right := 0, len(rf.log)-1
+	for left+1 < right {
+		midEntry := rf.log[left+(right-left)/2]
+		if midEntry.Term < term {
+			left = midEntry.Index - 1
+		} else {
+			right = midEntry.Index - 1
+		}
+	}
+	if rf.log[left].Term == term {
+		return rf.log[left].Index
+	}
+	return rf.log[right].Index
+}
+
+// the calling function holds the lock rf.mu
+// no guarantee entries exist for this term
+// find the first entry which has term larger than target term
+func (rf *Raft) findLargerEntryIndex(term int) int {
+	left, right := 0, len(rf.log)-1
+	for left+1 < right {
+		midEntry := rf.log[left+(right-left)/2]
+		if midEntry.Term <= term {
+			left = midEntry.Index - 1
+		} else {
+			right = midEntry.Index - 1
+		}
+	}
+	if rf.log[left].Term > term {
+		return rf.log[left].Index
+	}
+	return rf.log[right].Index
+}
+
 /*
 this function will guarantee to send to ch exact one reply, the longest time it takes is the RPC timeout.
 for heartbeat entries will be empty, issueEntryIndex is -1
 for appendEntries, entries will log[rf.nextIndices[server]-1:]
 it doesn't check if a higher issueEntryIndex is sent out
+but it needs to check if the server still the leader or if it's killed
 */
 func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan AppendEntriesReply) {
 	rf.mu.Lock()
+	if rf.killed() || rf.role != LEADER {
+		// fake reply if the server is not the leader or the server is killed
+		// this reply will be dropped in tryCommit or in HarvestAppendEntriesReply
+		reply := AppendEntriesReply{}
+		reply.Server = server
+		reply.IssueEntryIndex = issueEntryIndex
+		reply.LastAppendedIndex = 0
+		reply.Term = 0
+		reply.Success = false
+		reply.HigherTerm = false
+		reply.MisMatched = false
+		rf.mu.Unlock()
+		ch <- reply
+		return
+	}
 
 	if rf.latestIssuedEntryIndices[server] < issueEntryIndex {
 		rf.latestIssuedEntryIndices[server] = issueEntryIndex
@@ -405,6 +476,7 @@ func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 	}
 	if next > 1 {
 		// next is at least to be 1, >1 means there is a previous entry
+		TestDPrintf("Server %v next index at Server %v is %v\n", server, rf.me, next)
 		prevLogIndex = rf.log[next-2].Index
 		prevLogTerm = rf.log[next-2].Term
 	}
@@ -501,28 +573,40 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 			}
 			break
 		} else {
-			rf.mu.Unlock()
-		}
-
-		// retry
-		time.Sleep(time.Duration(REAPPENDTIMEOUT) * time.Millisecond)
-
-		// need to decrement nextIndices[server] if mismatched
-		if reply.MisMatched {
-			/*
-				suppose AppendCommand(comm1), AppendCommand(comm2)
-				rf.nextIndices[server] can be higher or lower than issuedIndex-1
-				if rf.nextIndices[reply.Server] != reply.NextIndex,
-				it means comm0 or comm2 may have updated nextIndices[Server]
-				this reply conveys outdated info, can't be used to update nextIndices[Server]
-			*/
-			rf.mu.Lock()
-			if rf.nextIndices[reply.Server] == reply.NextIndex {
-				rf.nextIndices[reply.Server]--
+			// retry
+			// need to change nextIndices[server] if mismatched
+			if reply.MisMatched {
+				/*
+					suppose AppendCommand(comm1), AppendCommand(comm2)
+					rf.nextIndices[server] can be higher or lower than issuedIndex-1
+					if rf.nextIndices[reply.Server] != reply.NextIndex,
+					it means comm0 or comm2 may have updated nextIndices[Server]
+					this reply conveys outdated info, can't be used to update nextIndices[Server]
+				*/
+				if rf.nextIndices[reply.Server] == reply.NextIndex {
+					// rf.nextIndices[reply.Server]--
+					if reply.ConflictTerm != -1 {
+						// conflicting term
+						// there must be a previous entry, otherwise, MisMatched won't be true
+						// rf.nextIndices[reply.Server] = rf.findLargerEntryIndex(reply.ConflictTerm)
+						if reply.ConflictTerm < rf.log[reply.NextIndex-2].Term {
+							// case 1: conflicting term smaller than log[prevIndex]
+							rf.nextIndices[reply.Server] = rf.findLargerEntryIndex(reply.ConflictTerm)
+						} else {
+							// case 2: conflicting term larger than log[prevIndex]
+							rf.nextIndices[reply.Server] = reply.ConflictStartIndex
+						}
+					} else {
+						// the server's log is shorter
+						// has no entry at prevIndex
+						rf.nextIndices[reply.Server] = reply.LogLength + 1
+					}
+				}
 			}
+			go rf.SendAppendEntries(reply.Server, issuedIndex, getReplyChan)
 			rf.mu.Unlock()
 		}
-		go rf.SendAppendEntries(reply.Server, issuedIndex, getReplyChan)
+		time.Sleep(time.Duration(REAPPENDTIMEOUT) * time.Millisecond)
 	}
 }
 
@@ -573,7 +657,9 @@ func (rf *Raft) ApplyCommand() {
 			CommandValid: true,
 			Command:      rf.log[i-1].Command, //committed logs will never be changed, no need for locks
 			CommandIndex: rf.log[i-1].Index,
+			CommandTerm:  rf.log[i-1].Term,
 		}
+		TestDPrintf("server %v applies %v\n", rf.me, msg)
 		rf.mu.Unlock()
 		rf.applyCh <- msg
 		rf.mu.Lock()
@@ -592,10 +678,9 @@ func (rf *Raft) ApplyCommand() {
 even leader turns to follower or server is killed
 we can still update the commitIndex since they are volatile
 before a new leader is elected
+calling function needs to hold rf.mu
 */
 func (rf *Raft) updateCommit(index int) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
 	count := 1
 	for i := 0; i < len(rf.peers); i++ {
 		if i == rf.me {
@@ -609,23 +694,6 @@ func (rf *Raft) updateCommit(index int) {
 		rf.commitIndex = index
 	}
 }
-
-// func (rf *Raft) updateCommit(index int) {
-// 	rf.mu.Lock()
-// 	defer rf.mu.Unlock()
-// 	smallestIndex := len(rf.log)
-// 	for i := 0; i < len(rf.peers); i++ {
-// 		if i == rf.me {
-// 			continue
-// 		}
-// 		if rf.matchIndices[i] < smallestIndex {
-// 			smallestIndex = rf.matchIndices[i]
-// 		}
-// 	}
-// 	if smallestIndex != 0 && rf.log[smallestIndex-1].Term == rf.currentTerm && rf.commitIndex < smallestIndex {
-// 		rf.commitIndex = smallestIndex
-// 	}
-// }
 
 /*
 don't check !rf.killed() && rf.isLeader()

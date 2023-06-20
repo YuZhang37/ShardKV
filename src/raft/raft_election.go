@@ -39,7 +39,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		before the reply is sent back to the candidate,
 		if the server crashes, it behaves just like the server never receives the request.
 	*/
-	rf.persist("server %v responds to request vote from %v", rf.me, args.CandidateId)
+	rf.persist("server %v responds to request vote from %v on term %v", rf.me, args.CandidateId, args.Term)
 }
 
 /*
@@ -170,6 +170,7 @@ func (rf *Raft) Election() {
 		}
 		if reply.VoteGranted {
 			countVotes++
+			TestDPrintf("%v grants vote to %v at term %v\n", reply.Server, rf.me, args.Term)
 			ElectionDPrintf("%v grants vote to %v at term %v\n", reply.Server, rf.me, args.Term)
 		} else {
 			ElectionDPrintf("%v doesn't grant vote to %v at term %v\n", reply.Server, rf.me, args.Term)
@@ -221,7 +222,7 @@ func (rf *Raft) Election() {
 		}
 
 		ElectionDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
-		PersistenceDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
+		TestDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
 	} else {
 		if reply.Term > rf.currentTerm {
 			originalTerm := rf.onReceiveHigherTerm(reply.Term)

@@ -156,14 +156,16 @@ import (
 // save Raft's persistent state to stable storage,
 // where it can later be retrieved after a crash and restart.
 // see paper's Figure 2 for a description of what should be persistent.
+// the function needs to be called with rf.mu held
 func (rf *Raft) persist(format string, a ...interface{}) {
 
 	PersistenceDPrintf("******* Server %v persist states  for %v *******\n", rf.me, fmt.Sprintf(format, a...))
 	PersistenceDPrintf("Server %v is leader: %v\n", rf.me, rf.currentLeader == rf.me)
 	PersistenceDPrintf("Server %v currentTerm: %v\n", rf.me, rf.currentTerm)
 	PersistenceDPrintf("Server %v votedFor: %v\n", rf.me, rf.votedFor)
-	PersistenceDPrintf("Server %v log: %v at %v\n", rf.me, rf.log, rf.me)
 	PersistenceDPrintf("Server %v commitIndex: %v\n", rf.me, rf.commitIndex)
+	PersistenceDPrintf("Server %v lastApplied: %v\n", rf.me, rf.lastApplied)
+	PersistenceDPrintf("Server %v log: %v at %v\n", rf.me, rf.log, rf.me)
 
 	writer := new(bytes.Buffer)
 	e := labgob.NewEncoder(writer)

@@ -3,18 +3,18 @@ package raft
 import "log"
 
 // Debugging
-const Debug = false
-const DebugElection = false
-const DebugAppendEntries = false
-const DebugHeartbeat = false
-const DebugPersistence = false
+// const Debug = false
+// const DebugElection = false
+// const DebugAppendEntries = false
+// const DebugHeartbeat = false
+// const DebugPersistence = false
 
 // case 1:
 // const Debug = true
 // const DebugElection = true
-// const DebugAppendEntries = true
+// const DebugAppendEntries = false
 // const DebugHeartbeat = true
-// const DebugPersistence = true
+// const DebugPersistence = false
 
 // case 2:
 
@@ -31,11 +31,13 @@ const DebugPersistence = false
 // const	DebugHeartbeat = true
 // const	DebugPersistence = true
 // case 4:
-// const Debug = false
-// const DebugElection = false
-// const DebugAppendEntries = true
-// const DebugHeartbeat = false
-// const DebugPersistence = true
+const Debug = false
+const DebugElection = false
+const DebugAppendEntries = false
+const DebugHeartbeat = false
+const DebugPersistence = false
+const DebugTest = false
+const colorRed = "\033[0;31m"
 
 func DebugRaft(info int) {
 
@@ -83,6 +85,13 @@ func AppendEntries2DPrintf(funct int, format string, a ...interface{}) (n int, e
 func PersistenceDPrintf(format string, a ...interface{}) (n int, err error) {
 	if DebugPersistence {
 		log.Printf(format, a...)
+	}
+	return
+}
+
+func TestDPrintf(format string, a ...interface{}) (n int, err error) {
+	if DebugTest {
+		log.Printf("\n \033[0;31m "+format+" \n", a...)
 	}
 	return
 }
