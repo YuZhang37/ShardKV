@@ -19,21 +19,10 @@ package raft
 
 import (
 //	"bytes"
+//	"6.5840/labgob"
 //
-// "log"
-// "time"
-//
-//	"6.824/labgob"
+// "6.5840/labrpc"
 )
-
-// A service wants to switch to snapshot.  Only do so if Raft hasn't
-// have more recent info since it communicate the snapshot on applyCh.
-func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
-
-	// Your code here (2D).
-
-	return true
-}
 
 // the service says it has created a snapshot that has
 // all info up to and including index. this means the

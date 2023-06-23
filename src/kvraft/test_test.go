@@ -1,7 +1,7 @@
 package kvraft
 
-import "6.824/porcupine"
-import "6.824/models"
+import "6.5840/porcupine"
+import "6.5840/models"
 import "testing"
 import "strconv"
 import "time"
@@ -37,11 +37,17 @@ func (log *OpLog) Read() []porcupine.Operation {
 	return ops
 }
 
+// to make sure timestamps use the monotonic clock, instead of computing
+// absolute timestamps with `time.Now().UnixNano()` (which uses the wall
+// clock), we measure time relative to `t0` using `time.Since(t0)`, which uses
+// the monotonic clock
+var t0 = time.Now()
+
 // get/put/putappend that keep counts
 func Get(cfg *config, ck *Clerk, key string, log *OpLog, cli int) string {
-	start := time.Now().UnixNano()
+	start := int64(time.Since(t0))
 	v := ck.Get(key)
-	end := time.Now().UnixNano()
+	end := int64(time.Since(t0))
 	cfg.op()
 	if log != nil {
 		log.Append(porcupine.Operation{
@@ -57,9 +63,9 @@ func Get(cfg *config, ck *Clerk, key string, log *OpLog, cli int) string {
 }
 
 func Put(cfg *config, ck *Clerk, key string, value string, log *OpLog, cli int) {
-	start := time.Now().UnixNano()
+	start := int64(time.Since(t0))
 	ck.Put(key, value)
-	end := time.Now().UnixNano()
+	end := int64(time.Since(t0))
 	cfg.op()
 	if log != nil {
 		log.Append(porcupine.Operation{
@@ -73,9 +79,9 @@ func Put(cfg *config, ck *Clerk, key string, value string, log *OpLog, cli int) 
 }
 
 func Append(cfg *config, ck *Clerk, key string, value string, log *OpLog, cli int) {
-	start := time.Now().UnixNano()
+	start := int64(time.Since(t0))
 	ck.Append(key, value)
-	end := time.Now().UnixNano()
+	end := int64(time.Since(t0))
 	cfg.op()
 	if log != nil {
 		log.Append(porcupine.Operation{
@@ -585,12 +591,10 @@ func TestPersistPartitionUnreliableLinearizable3A(t *testing.T) {
 	GenericTest(t, "3A", 15, 7, true, true, true, -1, true)
 }
 
-//
 // if one server falls behind, then rejoins, does it
 // recover by using the InstallSnapshot RPC?
 // also checks that majority discards committed log entries
 // even if minority doesn't respond.
-//
 func TestSnapshotRPC3B(t *testing.T) {
 	const nservers = 3
 	maxraftstate := 1000

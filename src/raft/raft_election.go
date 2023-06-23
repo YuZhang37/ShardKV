@@ -66,9 +66,12 @@ func (rf *Raft) ticker() {
 	// rand.Seed(time.Now().Unix())
 	rand.Seed(int64(rf.me) + time.Now().Unix())
 	for !rf.killed() {
-		// Your code here to check if a leader election should
-		// be started and to randomize sleeping time using
-		// time.Sleep().
+		/*
+			pause for a random amount of time between 50 and 350
+			milliseconds.
+			ms := 50 + (rand.Int63() % 300)
+			time.Sleep(time.Duration(ms) * time.Millisecond)
+		*/
 		randomTime := rand.Intn(rf.randomRange)
 		time.Sleep(time.Duration((randomTime + rf.eleTimeOut)) *
 			time.Millisecond)
