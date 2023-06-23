@@ -3,7 +3,7 @@ package raft
 import (
 	"sync"
 
-	"6.824/labrpc"
+	"6.5840/labrpc"
 )
 
 /*
