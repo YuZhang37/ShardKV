@@ -20,6 +20,7 @@ import (
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
 
+	// no lock is need at initialization
 	rf := &Raft{}
 	rf.peers = peers
 	rf.persister = persister
@@ -53,11 +54,14 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.eleTimeOut = ELETIMEOUT
 	rf.randomRange = RANDOMRANGE
 
+	rf.snapshotLastIndex = 0
+	rf.snapshotLastTerm = 0
+
 	// initialize from state persisted before a crash
-	recover := rf.readPersist(persister.ReadRaftState())
+	recover := rf.readPersist()
 	if !recover {
 		PersistenceDPrintf("Not previous state to recover from, persist initialization\n")
-		rf.persist("server %v initialization", rf.me)
+		rf.persistState("server %v initialization", rf.me)
 	} else {
 		PersistenceDPrintf("Recover form previous state\n")
 	}
@@ -120,15 +124,94 @@ must hold the lock rf.mu to call this function
 	rf.currentAppended = 0
 
 need to call persist() since votedFor is changed
+currentLeader may still need to update outside this function
 */
 func (rf *Raft) onReceiveHigherTerm(term int) int {
 	originalTerm := rf.currentTerm
 
 	rf.currentTerm = term
 	rf.role = FOLLOWER
+	// set it to -1 is not a problem, since this leader did not receive vote from this server
 	rf.votedFor = -1
 	rf.currentLeader = -1
 	rf.currentAppended = 0
 
 	return originalTerm
+}
+
+/*
+the target entry can exist in the log or beyond the log or below the log,
+return the index in rf.log if it exists
+return  -1, if below the log
+return len(log), if beyond the log
+this function is called with rf.mu held
+*/
+func (rf *Raft) findEntryWithIndexInLog(targetIndex int, log []LogEntry, measure int) int {
+	if len(log) == 0 {
+		if targetIndex <= measure {
+			return -1
+		} else {
+			return 0
+		}
+	}
+	left, right := 0, len(log)-1
+	for left+1 < right {
+		mid := left + (right-left)/2
+		entry := log[mid]
+		if entry.Index < targetIndex {
+			left = mid
+		} else {
+			right = mid
+		}
+	}
+	if targetIndex < log[left].Index {
+		return -1
+	}
+	if targetIndex > log[right].Index {
+		return len(log)
+	}
+	if targetIndex == log[left].Index {
+		return left
+	}
+	return right
+}
+
+// the calling function holds the lock rf.mu
+// no guarantee entries exist for this term
+// find the first entry which has term larger than target term
+func (rf *Raft) findLargerEntryIndex(term int) int {
+	left, right := 0, len(rf.log)-1
+	for left+1 < right {
+		midIndex := left + (right-left)/2
+		midEntry := rf.log[midIndex]
+		if midEntry.Term <= term {
+			left = midIndex
+		} else {
+			right = midIndex
+		}
+	}
+	if rf.log[left].Term > term {
+		return left
+	}
+	return right
+}
+
+// the calling function holds the lock rf.mu
+// guarantee at least one entry exists for this term
+// find the first entry whose term equals to the target term
+func (rf *Raft) findStartIndex(term int) int {
+	left, right := 0, len(rf.log)-1
+	for left+1 < right {
+		midIndex := left + (right-left)/2
+		midEntry := rf.log[midIndex]
+		if midEntry.Term < term {
+			left = midIndex
+		} else {
+			right = midIndex
+		}
+	}
+	if rf.log[left].Term == term {
+		return left
+	}
+	return right
 }

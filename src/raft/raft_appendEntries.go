@@ -31,7 +31,7 @@ func (rf *Raft) HarvestHeartbeatReply(replyChan chan AppendEntriesReply) {
 		rf.mu.Lock()
 		rf.msgReceived = false
 		originalTerm := rf.onReceiveHigherTerm(reply.Term)
-		rf.persist("server %v heartbeat replies on %v with higher term: %v, original term: %v", rf.me, reply.Server, reply.Term, originalTerm)
+		rf.persistState("server %v heartbeat replies on %v with higher term: %v, original term: %v", rf.me, reply.Server, reply.Term, originalTerm)
 		rf.mu.Unlock()
 
 	}
@@ -74,7 +74,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Command: command,
 	}
 	rf.log = append(rf.log, entry)
-	rf.persist("server %v appends entry %v to its log", rf.me, entry)
+	rf.persistState("server %v appends entry %v to its log", rf.me, entry)
 
 	AppendEntriesDPrintf("Command %v is appended on %v at index of %v\n", command, rf.me, len(rf.log))
 
@@ -204,7 +204,7 @@ func (rf *Raft) TryCommit(ch0 chan AppendEntriesReply, timerChan chan int, numOf
 					// contact a server with higher term
 					// this server may be the new leader or just a follower or a candidate
 					originalTerm := rf.onReceiveHigherTerm(reply.Term)
-					rf.persist("server %v try to commit %v replies on %v with higher term: %v, original term: %v", rf.me, entry, reply.Server, reply.Term, originalTerm)
+					rf.persistState("server %v try to commit %v replies on %v with higher term: %v, original term: %v", rf.me, entry, reply.Server, reply.Term, originalTerm)
 					// all threads need to be stopped
 					tryCommit = false
 				}
@@ -312,7 +312,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = false
 		reply.MisMatched = true
 		if persist_state {
-			rf.persist("server %v log (shorter) mismatch with the leader: %v", rf.me, args)
+			rf.persistState("server %v log (shorter) mismatch with the leader: %v", rf.me, args)
 		}
 		reply.ConflictTerm = -1
 		reply.ConflictStartIndex = -1
@@ -324,7 +324,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = false
 		reply.MisMatched = true
 		if persist_state {
-			rf.persist("server %v log (term) mismatch with the leader: %v", rf.me, args)
+			rf.persistState("server %v log (term) mismatch with the leader: %v", rf.me, args)
 		}
 		reply.ConflictTerm = rf.log[args.PrevLogIndex-1].Term
 		reply.ConflictStartIndex = rf.findStartIndex(reply.ConflictTerm)
@@ -376,7 +376,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		}
 		rf.currentAppended = args.Entries[len(args.Entries)-1].Index
 		reply.LastAppendedIndex = len(rf.log)
-		rf.persist("server %v appends new entries %v to %v", rf.me, args, len(rf.log))
+		rf.persistState("server %v appends new entries %v to %v", rf.me, args, len(rf.log))
 	}
 
 	// }
@@ -394,44 +394,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	AppendEntries2DPrintf(funct, "Command from %v is appended by %v at index of %v\n", args.LeaderId, rf.me, len(rf.log))
 	AppendEntries2DPrintf(funct, "logs on server %v: %v\n", rf.me, rf.log)
 
-}
-
-// the calling function holds the lock rf.mu
-// guarantee at least one entry exists for this term
-// find the first entry whose term equals to the target term
-func (rf *Raft) findStartIndex(term int) int {
-	left, right := 0, len(rf.log)-1
-	for left+1 < right {
-		midEntry := rf.log[left+(right-left)/2]
-		if midEntry.Term < term {
-			left = midEntry.Index - 1
-		} else {
-			right = midEntry.Index - 1
-		}
-	}
-	if rf.log[left].Term == term {
-		return rf.log[left].Index
-	}
-	return rf.log[right].Index
-}
-
-// the calling function holds the lock rf.mu
-// no guarantee entries exist for this term
-// find the first entry which has term larger than target term
-func (rf *Raft) findLargerEntryIndex(term int) int {
-	left, right := 0, len(rf.log)-1
-	for left+1 < right {
-		midEntry := rf.log[left+(right-left)/2]
-		if midEntry.Term <= term {
-			left = midEntry.Index - 1
-		} else {
-			right = midEntry.Index - 1
-		}
-	}
-	if rf.log[left].Term > term {
-		return rf.log[left].Index
-	}
-	return rf.log[right].Index
 }
 
 /*
