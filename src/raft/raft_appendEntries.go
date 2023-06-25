@@ -491,61 +491,60 @@ func (rf *Raft) GetAppendEntriesArgs(server int, next int, issueEntryIndex int) 
 	return args
 }
 
-// although harvest may issue lots of sends
-// but at any point in time, there is exactly one send and one harvest
-// and send part are ensured to send to the channel exactly once
-// handle retries
+/*
+although harvest may issue lots of senders
+but at any point in time, there is exactly one sender and one harvester
+and sender is ensured to send to the channel exactly once
+handle retries
+
+	get reply and handle retries
+	assume we can always get exactly one reply from getReplyChan
+	if rf is killed or no longer the leader,
+		the reply is dropped, no retries
+		won't block AppendCommand(), it has timerChan
+	if issued index > current index, no retries
+	if the index is committed, send the result to global harvest channel
+
+	send to sendReplyChan only if:
+		1. reply.success is true
+		2. reply.success is false but HigherTerm is true
+	if reply.success is false and HigherTerm is false
+		retries
+
+reply.sucess:
+
+	if reply.false, the longest time it takes from sending to this point is when RPC call fails,
+	the timeout time of that.
+	even reply.true, it can take that long as well
+	so we can't close the chan before that.
+	We close this channel when this server gets elected again, but if this happens too soon,
+	reply can still send to a closed channel, the server will panic, other servers can continue election.
+	RPC timeout should smaller than election timeout to avoid closed channel causing false fails.
+
+if reply.MisMatched:
+
+suppose AppendCommand(comm1), AppendCommand(comm2)
+rf.nextIndices[server] can be higher or lower than issuedIndex-1
+if rf.nextIndices[reply.Server] != reply.NextIndex,
+it means comm0 or comm2 may have updated nextIndices[Server]
+this reply conveys outdated info, can't be used to update nextIndices[Server]
+*/
 func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan AppendEntriesReply, stopChan chan int, getReplyChan chan AppendEntriesReply) {
-	/*
-		get reply and handle retries
-		assume we can always get exactly one reply from getReplyChan
-		if rf is killed or no longer the leader,
-			the reply is dropped, no retries
-			won't block AppendCommand(), it has timerChan
-		if issued index > current index, no retries
-		if the index is committed, send the result to global harvest channel
-
-		send to sendReplyChan only if:
-			1. reply.success is true
-			2. reply.success is false but HigherTerm is true
-		if reply.success is false and HigherTerm is false
-			retries
-
-	*/
 	for {
-		// getReplyChan may be stuck on sending channel
 		reply := <-getReplyChan
-		/*
-			suppose harvest waits on getReplyChan and the server becomes the follower, then when we try to send
-			the message, quitMsg must be 2
-
-		*/
 		rf.mu.Lock()
 		hasHigherIndex := rf.latestIssuedEntryIndices[reply.Server] > reply.IssueEntryIndex
 		isLeader := rf.role == LEADER
 
-		quitMsg := 0
 		if reply.Success || reply.HigherTerm || hasHigherIndex || rf.killed() || !isLeader {
 			rf.mu.Unlock()
-			// include to
-			// detect the server is not a valid leader any more
-			// return a false reply, which will be discarded by AppendCommand
 			AppendEntriesDPrintf("reply from server %v: %v waiting for sending", reply.Server, reply)
 			select {
 			case sendReplyChan <- reply:
 				AppendEntriesDPrintf("reply from server %v sends to replyChan", reply.Server)
-			case quitMsg = <-stopChan:
-				AppendEntriesDPrintf("...quitMsg: %v, reply from server %v sends to trailing", quitMsg, reply.Server)
-				if reply.Success {
-					/*
-						if reply.false, the longest time it takes from sending to this point is when RPC call fails,
-						the timeout time of that.
-						even reply.true, it can take that long as well
-						so we can't close the chan before that.
-						We close this channel when this server gets elected again, but if this happens too soon,
-						reply can still send to a closed channel, the server will panic, other servers can continue election.
-						RPC timeout should smaller than election timeout to avoid closed channel causing false fails.
-					*/
+			case <-stopChan:
+				AppendEntriesDPrintf("reply from server %v sends to trailing", reply.Server)
+				if reply.Success && rf.currentTerm == reply.Term && rf.role == LEADER && !rf.killed() {
 					rf.trailingReplyChan <- reply
 				}
 			}
@@ -554,37 +553,46 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 			// retry
 			// need to change nextIndices[server] if mismatched
 			if reply.MisMatched {
-				/*
-					suppose AppendCommand(comm1), AppendCommand(comm2)
-					rf.nextIndices[server] can be higher or lower than issuedIndex-1
-					if rf.nextIndices[reply.Server] != reply.NextIndex,
-					it means comm0 or comm2 may have updated nextIndices[Server]
-					this reply conveys outdated info, can't be used to update nextIndices[Server]
-				*/
-				if rf.nextIndices[reply.Server] == reply.NextIndex {
-					// rf.nextIndices[reply.Server]--
-					if reply.ConflictTerm != -1 {
-						// conflicting term
-						// there must be a previous entry, otherwise, MisMatched won't be true
-						// rf.nextIndices[reply.Server] = rf.findLargerEntryIndex(reply.ConflictTerm)
-						if reply.ConflictTerm < rf.log[reply.NextIndex-2].Term {
-							// case 1: conflicting term smaller than log[prevIndex]
-							rf.nextIndices[reply.Server] = rf.findLargerEntryIndex(reply.ConflictTerm)
-						} else {
-							// case 2: conflicting term larger than log[prevIndex]
-							rf.nextIndices[reply.Server] = reply.ConflictStartIndex
-						}
-					} else {
-						// the server's log is shorter
-						// has no entry at prevIndex
-						rf.nextIndices[reply.Server] = reply.LogLength + 1
-					}
-				}
+				rf.UpdateNextIndicesOnMisMatch(reply)
+			}
+			if rf.nextIndices[reply.Server] <= rf.snapshotLastTerm {
+				log.Fatalf("No implementation for endAndHarvestSnapshot")
+				// go rf.SendAndHarvestSnapshot(reply.Server)
 			}
 			go rf.SendAppendEntries(reply.Server, issuedIndex, getReplyChan)
 			rf.mu.Unlock()
 		}
 		time.Sleep(time.Duration(REAPPENDTIMEOUT) * time.Millisecond)
+	}
+}
+
+func (rf *Raft) UpdateNextIndicesOnMisMatch(reply AppendEntriesReply) {
+	if rf.nextIndices[reply.Server] == reply.NextIndex && rf.snapshotLastIndex < reply.NextIndex {
+		/*
+			next index for this server is not updated yet
+			and the entry is not merged into snapshot
+			for mismatched index
+		*/
+		if reply.NextIndex == rf.snapshotLastIndex+1 {
+			// no previous log entry
+			// at least there should be one previous entry between the snapshot and log entry of nextIndex
+			rf.nextIndices[reply.Server]--
+		} else if reply.ConflictTerm != -1 {
+			// conflicting term
+			// there is at least previous entry
+			indexInLiveLog := rf.findEntryWithIndexInLog(reply.NextIndex-1, rf.log, rf.snapshotLastIndex)
+			if reply.ConflictTerm < rf.log[indexInLiveLog].Term {
+				// case 1: conflicting term smaller than log[prevIndex]
+				rf.nextIndices[reply.Server] = rf.log[rf.findLargerEntryIndex(reply.ConflictTerm)].Index
+			} else {
+				// case 2: conflicting term larger than log[prevIndex]
+				rf.nextIndices[reply.Server] = reply.ConflictStartIndex
+			}
+		} else {
+			// the server's log is shorter
+			// has no entry at prevIndex
+			rf.nextIndices[reply.Server] = reply.LogLength + 1
+		}
 	}
 }
 
@@ -605,17 +613,13 @@ func (rf *Raft) HandleTrailingReply() {
 			continue
 		}
 		rf.mu.Lock()
-
 		if rf.matchIndices[reply.Server] < reply.LastAppendedIndex {
 			rf.matchIndices[reply.Server] = reply.LastAppendedIndex
 		}
-
 		if rf.nextIndices[reply.Server] < reply.LastAppendedIndex+1 {
 			rf.nextIndices[reply.Server] = reply.LastAppendedIndex + 1
 		}
-
 		rf.mu.Unlock()
-
 	}
 	rf.quitTrailingReplyChan <- 1
 }
