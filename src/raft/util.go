@@ -38,6 +38,7 @@ const DebugHeartbeat = false
 const DebugPersistence = false
 const DebugTest = false
 const DebugSnapshot = false
+const DebugTemp = false
 const colorRed = "\033[0;31m"
 
 func DebugRaft(info int) {
@@ -99,6 +100,13 @@ func TestDPrintf(format string, a ...interface{}) (n int, err error) {
 
 func SnapshotDPrintf(format string, a ...interface{}) (n int, err error) {
 	if DebugSnapshot {
+		log.Printf(format, a...)
+	}
+	return
+}
+
+func TempDPrintf(format string, a ...interface{}) (n int, err error) {
+	if DebugTemp {
 		log.Printf(format, a...)
 	}
 	return

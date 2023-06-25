@@ -543,9 +543,13 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 			case sendReplyChan <- reply:
 				AppendEntriesDPrintf("reply from server %v sends to replyChan", reply.Server)
 			case <-stopChan:
+				rf.mu.Lock()
 				AppendEntriesDPrintf("reply from server %v sends to trailing", reply.Server)
 				if reply.Success && rf.currentTerm == reply.Term && rf.role == LEADER && !rf.killed() {
+					rf.mu.Unlock()
 					rf.trailingReplyChan <- reply
+				} else {
+					rf.mu.Unlock()
 				}
 			}
 			break
@@ -630,30 +634,39 @@ the same command may be sent multiple times, the service will need to de-duplica
 */
 func (rf *Raft) ApplyCommand() {
 	rf.mu.Lock()
-	i := rf.lastApplied + 1
+	nextAppliedIndex := rf.lastApplied + 1
 	commitIndex := rf.commitIndex
-	rf.mu.Unlock()
-	for i <= commitIndex {
-		rf.mu.Lock()
+	indexInLiveLog := rf.findEntryWithIndexInLog(nextAppliedIndex, rf.log, rf.snapshotLastIndex)
+	if indexInLiveLog < 0 {
+		// this entry has been merged, but not applied: error
+		rf.mu.Unlock()
+		log.Fatalf("ApplyCommand() Error: targetIndex: %v indexInLiveLog: %v\n", nextAppliedIndex, indexInLiveLog)
+	}
+	index := indexInLiveLog
+	for index < len(rf.log) && nextAppliedIndex <= commitIndex {
 		msg := ApplyMsg{
 			CommandValid: true,
-			Command:      rf.log[i-1].Command, //committed logs will never be changed, no need for locks
-			CommandIndex: rf.log[i-1].Index,
-			CommandTerm:  rf.log[i-1].Term,
+			Command:      rf.log[index].Command,
+			CommandIndex: rf.log[index].Index,
+			CommandTerm:  rf.log[index].Term,
 		}
 		TestDPrintf("server %v applies %v\n", rf.me, msg)
 		rf.mu.Unlock()
 		rf.applyCh <- msg
 		rf.mu.Lock()
-		if rf.lastApplied < i {
-			rf.lastApplied = i
-			i++
+		if rf.lastApplied < nextAppliedIndex {
+			rf.lastApplied = nextAppliedIndex
+			index++
 		} else {
-			i = rf.lastApplied + 1
+			index = rf.findEntryWithIndexInLog(rf.lastApplied+1, rf.log, rf.snapshotLastIndex)
+			// index can't be -1, since rf.lastApplied+1 has not been applied yet
+		}
+		if index < len(rf.log) {
+			nextAppliedIndex = rf.log[index].Index
 		}
 		commitIndex = rf.commitIndex
-		rf.mu.Unlock()
 	}
+	rf.mu.Unlock()
 }
 
 /*
