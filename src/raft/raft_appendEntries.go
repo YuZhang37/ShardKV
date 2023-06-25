@@ -13,7 +13,6 @@ func (rf *Raft) HeartBeat(server int) {
 		go rf.HarvestHeartbeatReply(replyChan)
 		time.Sleep(time.Duration(rf.hbTimeOut) * time.Millisecond)
 	}
-
 }
 
 /*
@@ -33,7 +32,6 @@ func (rf *Raft) HarvestHeartbeatReply(replyChan chan AppendEntriesReply) {
 		originalTerm := rf.onReceiveHigherTerm(reply.Term)
 		rf.persistState("server %v heartbeat replies on %v with higher term: %v, original term: %v", rf.me, reply.Server, reply.Term, originalTerm)
 		rf.mu.Unlock()
-
 	}
 }
 
@@ -68,95 +66,66 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	AppendEntriesDPrintf("Start processing...\n")
 
 	//append to the leader's local log
+	index := 0
+	if len(rf.log) == 0 {
+		index = rf.snapshotLastIndex + 1
+	} else {
+		index = rf.log[len(rf.log)-1].Index + 1
+	}
 	entry := LogEntry{
 		Term:    rf.currentTerm,
-		Index:   len(rf.log) + 1,
+		Index:   index,
 		Command: command,
 	}
 	rf.log = append(rf.log, entry)
-	rf.persistState("server %v appends entry %v to its log", rf.me, entry)
 
+	rf.persistState("server %v appends entry %v to its log", rf.me, entry)
 	AppendEntriesDPrintf("Command %v is appended on %v at index of %v\n", command, rf.me, len(rf.log))
 
-	go rf.AppendCommand(entry.Index)
+	go rf.ReachConsensus(entry.Index)
 	return entry.Index, entry.Term, true
 }
 
-func (rf *Raft) AppendCommand(index int) {
-
+func (rf *Raft) ReachConsensus(index int) {
 	rf.mu.Lock()
 	if rf.killed() || rf.role != LEADER {
 		rf.mu.Unlock()
 		return
 	}
-	entry := rf.log[index-1]
+	if rf.commitIndex >= index {
+		rf.mu.Unlock()
+		return
+	}
+
 	numOfPeers := len(rf.peers)
-	AppendEntriesDPrintf("....AppendCommand at server %v: %v\n", rf.me, entry)
-	/*
-		the reason we need a stopChan for each harvesting thread, is that the thread
-		is not guaranteed to return, may loop for sending RPC, and when the loop
-		exit for the condition that the server is not valid, ch0 may not receive
-		messages, and the harvesting thread is halted.
-
-		on the other hand, harvest is guaranteed to send exactly
-		one message to AppendCommand() when the leader becomes invalid,
-
-		1. harvest may detect this before AppendCommand, and don't send the reply on ch0, it can pass with timerChan
-		2. harvest may detect this after AppendCommand, and wait for receiving on ch0, it blocks
-
-		add quitChan to unblock situation 2
-		to avoid block block stopChan, record the servers we have
-		received replies, don't send messages to their stopChans
-
-		infinite loop:
-		when the leader is valid, and the issued entry is the last entry, and the corresponding server failed,
-		then this request is sending infinitely
-	*/
-
-	// channel for harvesting threads communicating with AppendCommand() thread
+	// channel for harvesters to transmit results to ReachConsensus
 	ch0 := make(chan AppendEntriesReply)
-	// channels for AppendCommand() thread to terminate harvesting threads
+	// channels for ReachConsensus thread to terminate harvesters
 	stopChans := make([]chan int, numOfPeers)
 	for i := 0; i < len(stopChans); i++ {
 		stopChans[i] = make(chan int)
 	}
-
 	for i := 0; i < numOfPeers; i++ {
 		if i == rf.me {
 			continue
 		}
-		// channel for send thread to send the reply to harvest thread
+		// channel for sender to transmit the result to harvesters
 		ch := make(chan AppendEntriesReply)
-
-		// there could be many outstanding appendEntries to the
-		// same server issued by AppendCommand(comm1) and AppendCommand(comm2)
-		// the args.entries to send may be longer than this new entry
-		// doesn't matter, AppendEntries will handle them
-		go rf.SendAppendEntries(i, entry.Index, ch)
-		go rf.HarvestAppendEntriesReply(entry.Index, ch0, stopChans[i], ch)
-
+		go rf.SendAppendEntries(i, index, ch)
+		go rf.HarvestAppendEntriesReply(index, ch0, stopChans[i], ch)
 	}
-
 	rf.mu.Unlock()
 
-	/*
-		periodically time out to check commitIndex
-		accommodate the case where AppendCommand(comm2) may commit comm1,
-		also it's possible AppendCommand(comm1) can commit comm2
-	*/
 	timerChan := make(chan int)
 	quitTimerChan := make(chan int)
 	go rf.CheckCommitTimeOut(quitTimerChan, timerChan)
 
-	harvestedServers := rf.TryCommit(ch0, timerChan, numOfPeers, entry)
-
+	harvestedServers := rf.Commit(ch0, timerChan, index)
 	// stop the timer thread
 	go func(ch chan int) {
 		ch <- 1
 	}(quitTimerChan)
-
 	go rf.QuitBlockedHarvests(numOfPeers, harvestedServers, stopChans)
-
 	go rf.ApplyCommand()
 }
 
@@ -176,7 +145,7 @@ the leader may become a follower
 the higherTerm reply may redirected to global harvest,
 but it will be dropped and won't be processed.
 */
-func (rf *Raft) TryCommit(ch0 chan AppendEntriesReply, timerChan chan int, numOfPeers int, entry LogEntry) map[int]bool {
+func (rf *Raft) Commit(ch0 chan AppendEntriesReply, timerChan chan int, entryIndex int) map[int]bool {
 
 	// the leader has appended the entry
 	successCount := 1
@@ -191,31 +160,7 @@ func (rf *Raft) TryCommit(ch0 chan AppendEntriesReply, timerChan chan int, numOf
 			if rf.killed() || rf.role != LEADER {
 				tryCommit = false
 			} else {
-				if reply.Success {
-					successCount++
-					// to cover the case AppendCommand(comm2) finishes before AppendCommand(comm1)
-					if rf.matchIndices[reply.Server] < reply.LastAppendedIndex {
-						rf.matchIndices[reply.Server] = reply.LastAppendedIndex
-					}
-					if rf.nextIndices[reply.Server] < reply.LastAppendedIndex+1 {
-						rf.nextIndices[reply.Server] = reply.LastAppendedIndex + 1
-					}
-				} else if reply.HigherTerm && reply.Term > rf.currentTerm {
-					// contact a server with higher term
-					// this server may be the new leader or just a follower or a candidate
-					originalTerm := rf.onReceiveHigherTerm(reply.Term)
-					rf.persistState("server %v try to commit %v replies on %v with higher term: %v, original term: %v", rf.me, entry, reply.Server, reply.Term, originalTerm)
-					// all threads need to be stopped
-					tryCommit = false
-				}
-				// the reply when failed with higher issue index is dropped
-
-				if successCount > numOfPeers/2 {
-					if rf.commitIndex < entry.Index {
-						rf.commitIndex = entry.Index
-					}
-					tryCommit = false
-				}
+				tryCommit, successCount = rf.OnReceivingAppendEntriesReply(&reply, successCount, entryIndex)
 			}
 			rf.mu.Unlock()
 		case <-timerChan:
@@ -223,9 +168,9 @@ func (rf *Raft) TryCommit(ch0 chan AppendEntriesReply, timerChan chan int, numOf
 			if rf.killed() || rf.role != LEADER {
 				tryCommit = false
 			} else {
-				rf.updateCommit(entry.Index)
+				rf.updateCommit(entryIndex)
 				// start(comm2) may commit a higher index
-				if rf.commitIndex >= entry.Index {
+				if rf.commitIndex >= entryIndex {
 					tryCommit = false
 				}
 			}
@@ -235,152 +180,99 @@ func (rf *Raft) TryCommit(ch0 chan AppendEntriesReply, timerChan chan int, numOf
 	return harvestedServers
 }
 
+func (rf *Raft) OnReceivingAppendEntriesReply(reply *AppendEntriesReply, successCount int, entryIndex int) (bool, int) {
+	tryCommit := true
+	if reply.Success {
+		successCount++
+		if rf.matchIndices[reply.Server] < reply.LastAppendedIndex {
+			rf.matchIndices[reply.Server] = reply.LastAppendedIndex
+		}
+		if rf.nextIndices[reply.Server] < reply.LastAppendedIndex+1 {
+			rf.nextIndices[reply.Server] = reply.LastAppendedIndex + 1
+		}
+	} else if reply.HigherTerm && reply.Term > rf.currentTerm {
+		originalTerm := rf.onReceiveHigherTerm(reply.Term)
+		rf.persistState("server %v try to commit %v replies on %v with higher term: %v, original term: %v", rf.me, entryIndex, reply.Server, reply.Term, originalTerm)
+		tryCommit = false
+	}
+	// the reply when failed with higher issue index is dropped
+
+	if successCount > len(rf.peers)/2 {
+		if rf.commitIndex < entryIndex {
+			rf.commitIndex = entryIndex
+		}
+		tryCommit = false
+	}
+	return tryCommit, successCount
+}
+
 /*
 for all harvest goroutines which don't reply, send out a message to redirect the replies to global harvest or just drop all replies
 */
 func (rf *Raft) QuitBlockedHarvests(numOfPeers int, harvestedServers map[int]bool, stopChans []chan int) {
-	AppendEntriesDPrintf("....harvestedServers: %v\n", harvestedServers)
 	for i := 0; i < numOfPeers; i++ {
 		if i == rf.me || harvestedServers[i] {
 			continue
 		}
 		go func(ch chan int, server int) {
 			quitMessage := 1
-			AppendEntriesDPrintf("....quitMessage: %v is sent to %v\n", quitMessage, server)
 			ch <- quitMessage
 		}(stopChans[i], i)
 	}
 }
 
 /*
-	follower or candidate server will execute this function for heartbeat or appendEntries,
-
-args.IssueEntryIndex is -1 no entries for heartbeat
+follower or candidate server will execute this function for heartbeat or appendEntries,
+for heartbeat: args.IssueEntryIndex is -1 and no entries
 */
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	funct := 1
 	if args.IssueEntryIndex == -1 {
 		funct = 2
 	}
-
 	AppendEntries2DPrintf(funct, "Command from %v received by %v at index of %v\n", args.LeaderId, rf.me, args.PrevLogIndex+1)
 
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	// the reply's term may be less than leader's
-	reply.Server = rf.me
-	reply.Term = rf.currentTerm
-	reply.IssueEntryIndex = args.IssueEntryIndex
-	reply.NextIndex = args.PrevLogIndex + 1
-
+	rf.FillArgsInReply(args, reply)
 	if rf.currentTerm > args.Term {
-		// leader contacts one server with higher term
-		reply.Success = false
-		reply.HigherTerm = true
-		reply.MisMatched = false
-		reply.LastAppendedIndex = 0
+		rf.HigherTermReply(reply)
 		return
 	}
 
 	/**** process both heartbeats and appendEntries ****/
 
-	// 1. follower or candidate or leader with smaller term (< args.Term)
-	// 2. candidate with term = args.Term, if -1, then it's the first time this server contacts with the leader, updates all states just like encountering a higher term.
-	// => when leader sends out the first heartbeat, all followers's leader will be set to be it, and votedFor will be reset to be -1
-	// 2 is wrong, can lead to split brain
-
-	persist_state := false
-	if rf.currentTerm < args.Term {
-		rf.onReceiveHigherTerm(args.Term)
-		persist_state = true
-		rf.currentLeader = args.LeaderId
-	} else if rf.currentLeader == -1 {
-		// must be a candidate with term == leader's term and currentLeader being -1,
-		rf.role = FOLLOWER
-		rf.currentLeader = args.LeaderId
-		rf.currentAppended = 0
-	}
-
-	// valid heartbeat or appendEntries
-	rf.msgReceived = true
-
 	reply.HigherTerm = false
-	reply.LogLength = len(rf.log)
-
-	if len(rf.log) < args.PrevLogIndex {
-		// 1. log doesn't contain an entry at PrevLogIndex
-		reply.Success = false
-		reply.MisMatched = true
-		if persist_state {
-			rf.persistState("server %v log (shorter) mismatch with the leader: %v", rf.me, args)
-		}
-		reply.ConflictTerm = -1
-		reply.ConflictStartIndex = -1
+	reply.LogLength = rf.snapshotLastIndex + len(rf.log)
+	rf.UpdateStateOnReceivingAppendEntries(args)
+	mismatch, indexInLiveLog := rf.CheckPrevLogMisMatch(args, reply)
+	if mismatch {
 		return
 	}
-
-	if args.PrevLogIndex > 1 && rf.log[args.PrevLogIndex-1].Term != args.PrevLogTerm {
-		// 2. log entry at PrevLogIndex doesn't equal to PrevLogTerm
-		reply.Success = false
-		reply.MisMatched = true
-		if persist_state {
-			rf.persistState("server %v log (term) mismatch with the leader: %v", rf.me, args)
-		}
-		reply.ConflictTerm = rf.log[args.PrevLogIndex-1].Term
-		reply.ConflictStartIndex = rf.findStartIndex(reply.ConflictTerm)
-		return
-	}
-
+	/*
+		at this point, the prev log entry matches the leader,
+		or the entry has been merged,
+		for prev log entry is index=0 and term=0, it is merged into this case
+	*/
 	reply.Success = true
 	reply.HigherTerm = false
 	reply.MisMatched = false
 
-	// not a heartbeat
-	// if args.IssueEntryIndex != -1 {
-
 	// for appendEntries: args.Entries can still be empty if the nextIndices[Server] gets updated before preparing the args
 	// len(args.Entries) == 0 includes heartbeat and appendEntries
 	if len(args.Entries) == 0 || args.Entries[len(args.Entries)-1].Index <= rf.currentAppended {
-		/*
-			no new entries in args needed to append on the server
-			suppose AppendCommand(comm1), AppendCommand(comm2)
-			comm2 may get to the server earlier than comm1
-			comm1 carries comm2
-		*/
+		// no new entries in args needed to append on the server
 		reply.LastAppendedIndex = rf.currentAppended
 	} else {
-		/*
-			new entries in args which need to append,
-			the server's log matches leader's log at least up through PrevLogIndex
-			now appends new entries to the server's log, the new entries may not start from PreLogIndex + 1
-		*/
-		i := args.PrevLogIndex
-		j := 0
-		for i < len(rf.log) && j < len(args.Entries) {
-			if rf.log[i].Term != args.Entries[j].Term {
-				rf.log[i] = args.Entries[j]
-			}
-			i++
-			j++
-		}
-
-		if i < len(rf.log) {
-			// removing unmatched trailing log entries in the server
-			rf.log = rf.log[:i]
-		}
-
-		for j < len(args.Entries) {
-			// append new log entries to the server's log
-			rf.log = append(rf.log, args.Entries[j])
-			j++
-		}
-		rf.currentAppended = args.Entries[len(args.Entries)-1].Index
-		reply.LastAppendedIndex = len(rf.log)
-		rf.persistState("server %v appends new entries %v to %v", rf.me, args, len(rf.log))
+		rf.AppendNewEntriesFromArgs(indexInLiveLog, args, reply)
 	}
+	rf.UpdateCommitIndexOnReceivingAppendEntries(args)
+	AppendEntries2DPrintf(funct, "Command from %v is appended by %v at index of %v\n", args.LeaderId, rf.me, len(rf.log))
+	AppendEntries2DPrintf(funct, "logs on server %v: %v\n", rf.me, rf.log)
 
-	// }
+}
 
+func (rf *Raft) UpdateCommitIndexOnReceivingAppendEntries(args *AppendEntriesArgs) {
 	//update commitIndex both for heartbeat and appendEntries
 	leaderCommitIndex := args.LeaderCommitIndex
 	if rf.currentAppended < leaderCommitIndex {
@@ -390,10 +282,114 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.commitIndex = leaderCommitIndex
 		go rf.ApplyCommand()
 	}
+}
 
-	AppendEntries2DPrintf(funct, "Command from %v is appended by %v at index of %v\n", args.LeaderId, rf.me, len(rf.log))
-	AppendEntries2DPrintf(funct, "logs on server %v: %v\n", rf.me, rf.log)
+func (rf *Raft) FillArgsInReply(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	// the reply's term may be less than leader's
+	reply.Server = rf.me
+	reply.Term = rf.currentTerm
+	reply.IssueEntryIndex = args.IssueEntryIndex
+	reply.NextIndex = args.PrevLogIndex + 1
+}
 
+// leader contacts one server with higher term
+func (rf *Raft) HigherTermReply(reply *AppendEntriesReply) {
+	reply.Success = false
+	reply.HigherTerm = true
+	reply.MisMatched = false
+	reply.LastAppendedIndex = 0
+}
+
+// check if args prevLogEntry matches the server
+// if matched, return the indexInLiveLog for the prevLogEntry
+func (rf *Raft) CheckPrevLogMisMatch(args *AppendEntriesArgs, reply *AppendEntriesReply) (bool, int) {
+	if reply.LogLength < args.PrevLogIndex {
+		// 1. log doesn't contain an entry at PrevLogIndex
+		// indexInLiveLog == length of the log
+		reply.Success = false
+		reply.MisMatched = true
+		reply.ConflictTerm = -1
+		reply.ConflictStartIndex = -1
+		return true, 0
+	}
+	/*
+		the server has an entry at args.PrevLogIndex:
+		1. this entry has been merged into snapshot
+		2. this entry is alive
+	*/
+	indexInLiveLog := rf.findEntryWithIndexInLog(args.PrevLogIndex, rf.log, rf.snapshotLastIndex)
+	SnapshotDPrintf("server: %v, indexInLiveLog: %v, args.PrevLogIndex: %v\n", rf.me, indexInLiveLog, args.PrevLogIndex)
+	/*
+		if indexInLiveLog == -1, then the prev log entry has been committed and merged, must be matching
+	*/
+	if indexInLiveLog != -1 && rf.log[indexInLiveLog].Term != args.PrevLogTerm {
+		// 2. log entry at PrevLogIndex is alive and doesn't equal to PrevLogTerm
+		reply.Success = false
+		reply.MisMatched = true
+		reply.ConflictTerm = rf.log[indexInLiveLog].Term
+		reply.ConflictStartIndex = rf.findStartIndex(reply.ConflictTerm)
+		return true, 0
+	}
+	return false, indexInLiveLog
+}
+
+func (rf *Raft) UpdateStateOnReceivingAppendEntries(args *AppendEntriesArgs) {
+	// 1. follower or candidate or leader with smaller term (< args.Term)
+	// 2. candidate with term = args.Term, if -1, then it's the first time this server contacts with the leader, updates all states just like encountering a higher term.
+	// => when leader sends out the first heartbeat, all followers's leader will be set to be it, and votedFor will be reset to be -1
+	// 2 is wrong, can lead to split brain
+
+	if rf.currentTerm < args.Term {
+		rf.onReceiveHigherTerm(args.Term)
+		rf.currentLeader = args.LeaderId
+		rf.persistStateWithSnapshot("AppendEntries()")
+	} else if rf.currentLeader == -1 {
+		// must be a candidate with term == leader's term and currentLeader being -1, don't change votedFor
+		rf.role = FOLLOWER
+		rf.currentLeader = args.LeaderId
+		rf.currentAppended = 0
+	}
+
+	// valid heartbeat or appendEntries
+	rf.msgReceived = true
+}
+
+func (rf *Raft) AppendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	/*
+		new entries in args which need to be appended,
+		the server's log matches leader's log at least up through PrevLogIndex
+		now appends new entries to the server's log, the new entries may not start from PreLogIndex + 1
+	*/
+	i := 0
+	j := 0
+	if indexInLiveLog == -1 {
+		// some head log entries in args have been merged
+		j = rf.findEntryWithIndexInLog(rf.snapshotLastIndex+1, args.Entries, rf.snapshotLastIndex)
+	} else {
+		// matching start from indexInLiveLog+1
+		i = indexInLiveLog + 1
+	}
+	for i < len(rf.log) && j < len(args.Entries) {
+		if rf.log[i].Term != args.Entries[j].Term {
+			rf.log[i] = args.Entries[j]
+		}
+		i++
+		j++
+	}
+
+	if i < len(rf.log) {
+		// removing unmatched trailing log entries in the server
+		rf.log = rf.log[:i]
+	}
+
+	for j < len(args.Entries) {
+		// append new log entries to the server's log
+		rf.log = append(rf.log, args.Entries[j])
+		j++
+	}
+	rf.currentAppended = args.Entries[len(args.Entries)-1].Index
+	reply.LastAppendedIndex = rf.currentAppended
+	rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
 }
 
 /*
@@ -404,20 +400,12 @@ it doesn't check if a higher issueEntryIndex is sent out
 but it needs to check if the server still the leader or if it's killed
 */
 func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan AppendEntriesReply) {
+	fakeReply := rf.GetFakeAppendEntriesReply(server, issueEntryIndex)
 	rf.mu.Lock()
 	if rf.killed() || rf.role != LEADER {
-		// fake reply if the server is not the leader or the server is killed
 		// this reply will be dropped in tryCommit or in HarvestAppendEntriesReply
-		reply := AppendEntriesReply{}
-		reply.Server = server
-		reply.IssueEntryIndex = issueEntryIndex
-		reply.LastAppendedIndex = 0
-		reply.Term = 0
-		reply.Success = false
-		reply.HigherTerm = false
-		reply.MisMatched = false
 		rf.mu.Unlock()
-		ch <- reply
+		ch <- fakeReply
 		return
 	}
 
@@ -428,24 +416,67 @@ func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 	if issueEntryIndex < 0 {
 		funct = 2
 	}
-	prevLogIndex := 0
-	prevLogTerm := 0
-	entries := make([]LogEntry, 0)
 	next := rf.nextIndices[server]
 	AppendEntries2DPrintf(funct, "next index to %v is %v \n", server, next)
 	if next < 1 {
+		rf.mu.Unlock()
 		log.Fatalf("fatal: next index to %v is %v \n", server, next)
 	}
-	if next > 1 {
-		// next is at least to be 1, >1 means there is a previous entry
+
+	if next <= rf.snapshotLastIndex {
+		// will be retried later
+		rf.mu.Unlock()
+		ch <- fakeReply
+		return
+	}
+	args := rf.GetAppendEntriesArgs(server, next, issueEntryIndex)
+	AppendEntries2DPrintf(funct, "args: %v at %v to %v\n", args, rf.me, server)
+	AppendEntries2DPrintf(funct, "log: %v at %v \n", rf.log, rf.me)
+	rf.mu.Unlock()
+	reply := AppendEntriesReply{}
+	ok := rf.peers[server].Call("Raft.AppendEntries", &args, &reply)
+	if !ok {
+		// RPC call failed
+		ch <- fakeReply
+		return
+	}
+	ch <- reply
+}
+
+func (rf *Raft) GetFakeAppendEntriesReply(server int, issueEntryIndex int) AppendEntriesReply {
+	fakeReply := AppendEntriesReply{
+		Server:            server,
+		IssueEntryIndex:   issueEntryIndex,
+		LastAppendedIndex: 0,
+		Term:              0,
+		Success:           false,
+		HigherTerm:        false,
+		MisMatched:        false,
+	}
+	return fakeReply
+}
+
+func (rf *Raft) GetAppendEntriesArgs(server int, next int, issueEntryIndex int) AppendEntriesArgs {
+	prevLogIndex := 0
+	prevLogTerm := 0
+	entries := make([]LogEntry, 0)
+	indexInLiveLog := rf.findEntryWithIndexInLog(next, rf.log, rf.snapshotLastIndex)
+
+	if next == rf.snapshotLastIndex+1 {
+		// there is no previous entry
+		// rf.snapshotLastIndex and rf.snapshotLastTerm are initialized to be 0, so for next = 1, both variables will be 0
+		prevLogIndex = rf.snapshotLastIndex
+		prevLogTerm = rf.snapshotLastTerm
+	} else {
+		// there is a previous entry
 		TestDPrintf("Server %v next index at Server %v is %v\n", server, rf.me, next)
-		prevLogIndex = rf.log[next-2].Index
-		prevLogTerm = rf.log[next-2].Term
+		prevLogIndex = rf.log[indexInLiveLog-1].Index
+		prevLogTerm = rf.log[indexInLiveLog-1].Term
 	}
 
 	if issueEntryIndex != -1 {
 		// not a heartbeat
-		entries = rf.log[next-1:]
+		entries = rf.log[indexInLiveLog:]
 	}
 
 	args := AppendEntriesArgs{
@@ -457,22 +488,7 @@ func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 		Entries:           entries,
 		LeaderCommitIndex: rf.commitIndex,
 	}
-	AppendEntries2DPrintf(funct, "args: %v at %v to %v\n", args, rf.me, server)
-	AppendEntries2DPrintf(funct, "log: %v at %v \n", rf.log, rf.me)
-	rf.mu.Unlock()
-	reply := AppendEntriesReply{}
-	ok := rf.peers[server].Call("Raft.AppendEntries", &args, &reply)
-	if !ok {
-		// RPC call failed
-		reply.Server = server
-		reply.IssueEntryIndex = args.IssueEntryIndex
-		reply.LastAppendedIndex = 0
-		reply.Term = 0
-		reply.Success = false
-		reply.HigherTerm = false
-		reply.MisMatched = false
-	}
-	ch <- reply
+	return args
 }
 
 // although harvest may issue lots of sends
