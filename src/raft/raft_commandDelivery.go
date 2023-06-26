@@ -1,95 +1,87 @@
 package raft
 
-import (
-	"log"
-)
+// "log"
 
 /*
 send the commands which are committed but not applied to ApplyCh
 the same command may be sent multiple times, the service will need to de-duplicate the commands when executing them
 */
 func (rf *Raft) ApplyCommand(issuedIndex int) {
-	TempDPrintf("server %v, issuedIndex: %v\n", rf.me, issuedIndex)
-	if !rf.killed() {
-		rf.orderedDeliveryChan <- issuedIndex
+	for nextAppliedIndex := int(rf.GetLastApplied() + 1); nextAppliedIndex <= issuedIndex; nextAppliedIndex++ {
+		rf.mu.Lock()
+		indexInLiveLog := rf.findEntryWithIndexInLog(nextAppliedIndex, rf.log, rf.snapshotLastIndex)
+		if indexInLiveLog < 0 || rf.log[indexInLiveLog].Index <= int(rf.GetLastApplied()) {
+			// this entry has been merged, but not applied: error
+			rf.mu.Unlock()
+			continue
+		}
+		msg := ApplyMsg{
+			CommandValid: true,
+			Command:      rf.log[indexInLiveLog].Command,
+			CommandIndex: rf.log[indexInLiveLog].Index,
+			CommandTerm:  rf.log[indexInLiveLog].Term,
+		}
+		TempDPrintf("server %v sends %v\n", rf.me, msg)
+		// rf.pendingMsg[msg.CommandIndex] = msg
+		rf.mu.Unlock()
+		rf.applyCh <- msg
+		rf.IncrementLastApplied(nextAppliedIndex - 1)
+		// if _, exists := rf.pendingMsg[msg.CommandIndex]; !exists {
+		// 	TempDPrintf("server %v sends %v\n", rf.me, msg)
+		// 	rf.pendingMsg[msg.CommandIndex] = msg
+		// 	rf.mu.Unlock()
+		// 	rf.applyCh <- msg
+		// 	rf.mu.Lock()
+		// 	if rf.lastApplied == int32(msg.CommandIndex-1) {
+		// 		rf.lastApplied++
+		// 	}
+		// 	delete(rf.pendingMsg, msg.CommandIndex)
+		// 	// rf.IncrementLastApplied(nextAppliedIndex)
+
+		// } else {
+		// 	rf.mu.Unlock()
+		// }
 	}
-	// rf.CheckAndDeliverCommand(issuedIndex)
-	// timerChan := make(chan int)
-	// quitTimerChan := make(chan int)
-	// go func(timerChan, quitTimerChan chan int) {
-	// 	quit := false
-	// 	for !quit {
-	// 		time.Sleep(2 * time.Millisecond)
-	// 		select {
-	// 		case timerChan <- 1:
-	// 		case <-quitTimerChan:
-	// 			quit = true
-	// 		}
-	// 	}
-	// }(timerChan, quitTimerChan)
-	// for !rf.killed() {
-	// 	select {
-	// 	case rf.orderedDeliveryChan <- issuedIndex:
-	// 	case <-timerChan:
-	// 	}
-	// }
-	// go func(quitTimerChan chan int) {
-	// 	quitTimerChan <- 1
-	// }(quitTimerChan)
+}
+
+func (rf *Raft) ApplyCommand2(issuedIndex int) {
+	for nextAppliedIndex := int(rf.GetLastApplied() + 1); nextAppliedIndex <= issuedIndex; nextAppliedIndex++ {
+		rf.mu.Lock()
+		indexInLiveLog := rf.findEntryWithIndexInLog(nextAppliedIndex, rf.log, rf.snapshotLastIndex)
+		if indexInLiveLog < 0 || rf.log[indexInLiveLog].Index <= int(rf.lastApplied) {
+			// this entry has been merged, but not applied: error
+			rf.mu.Unlock()
+			continue
+		}
+		msg := ApplyMsg{
+			CommandValid: true,
+			Command:      rf.log[indexInLiveLog].Command,
+			CommandIndex: rf.log[indexInLiveLog].Index,
+			CommandTerm:  rf.log[indexInLiveLog].Term,
+		}
+		TestDPrintf("server %v sends %v\n", rf.me, msg)
+		rf.mu.Unlock()
+		rf.orderedDeliveryChan <- msg
+	}
 }
 
 func (rf *Raft) OrderedCommandDelivery() {
 	TempDPrintf("server: %v, OrderedCommandDelivery gets running....", rf.me)
-	pendingIndex := rf.lastApplied
-	for index := range rf.orderedDeliveryChan {
-		TempDPrintf("server: %v, OrderedCommandDelivery gets index: %v\n.", rf.me, index)
-		if rf.killed() {
-			TempDPrintf("server: %v is killed, OrderedCommandDelivery gets index: %v\n.", rf.me, index)
-			break
-		}
-		if index <= pendingIndex {
-			TempDPrintf("server: %v, index: %v is skipped\n.", rf.me, index)
-			continue
-		} else {
-			pendingIndex = index
-			rf.CheckAndDeliverCommand(index)
-		}
-	}
-}
-
-func (rf *Raft) CheckAndDeliverCommand(issuedIndex int) {
-	rf.mu.Lock()
-	nextAppliedIndex := rf.lastApplied + 1
-	commitIndex := rf.commitIndex
-	indexInLiveLog := rf.findEntryWithIndexInLog(nextAppliedIndex, rf.log, rf.snapshotLastIndex)
-	if indexInLiveLog < 0 {
-		// this entry has been merged, but not applied: error
-		rf.mu.Unlock()
-		log.Fatalf("ApplyCommand() Error: targetIndex: %v indexInLiveLog: %v\n", nextAppliedIndex, indexInLiveLog)
-	}
-	index := indexInLiveLog
-	for index < len(rf.log) && nextAppliedIndex <= commitIndex {
-		msg := ApplyMsg{
-			CommandValid: true,
-			Command:      rf.log[index].Command,
-			CommandIndex: rf.log[index].Index,
-			CommandTerm:  rf.log[index].Term,
-		}
-		TestDPrintf("server %v applies %v\n", rf.me, msg)
-		rf.mu.Unlock()
-		rf.applyCh <- msg
-		rf.mu.Lock()
-		if rf.lastApplied < nextAppliedIndex {
-			rf.lastApplied = nextAppliedIndex
-			index++
-		} else {
-			index = rf.findEntryWithIndexInLog(rf.lastApplied+1, rf.log, rf.snapshotLastIndex)
-			// index can't be -1, since rf.lastApplied+1 has not been applied yet
-		}
-		if index < len(rf.log) {
-			nextAppliedIndex = rf.log[index].Index
-		}
-		commitIndex = rf.commitIndex
-	}
-	rf.mu.Unlock()
+	// for msg := range rf.orderedDeliveryChan {
+	// 	TempDPrintf("server: %v, OrderedCommandDelivery gets index: %v.\n", rf.me, msg.CommandIndex)
+	// 	if msg.CommandIndex <= int(rf.GetLastApplied()) {
+	// 		TempDPrintf("server: %v, index: %v is skipped\n.", rf.me, msg.CommandIndex)
+	// 		continue
+	// 	}
+	// 	_, exists := rf.pendingMsg[msg.CommandIndex]
+	// 	if exists {
+	// 		continue
+	// 	}
+	// 	rf.pendingMsg[msg.CommandIndex] = msg
+	// 	for nextMsg, nextMsgExists := rf.pendingMsg[int(rf.GetLastApplied())+1]; nextMsgExists; nextMsg, nextMsgExists = rf.pendingMsg[int(rf.GetLastApplied())+1] {
+	// 		rf.applyCh <- nextMsg
+	// 		delete(rf.pendingMsg, int(rf.GetLastApplied())+1)
+	// 		rf.IncrementLastApplied()
+	// 	}
+	// }
 }

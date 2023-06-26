@@ -103,7 +103,7 @@ type Raft struct {
 		commitIndex and lastApplied don't need to be reset on leader change
 	*/
 	commitIndex int
-	lastApplied int
+	lastApplied int32
 
 	// need to be persistent
 	currentTerm int
@@ -179,10 +179,13 @@ type Raft struct {
 			changed when snapshot is updated:
 			Snapshot(), installSnapshot()
 	*/
-	snapshotLastIndex   int
-	snapshotLastTerm    int
-	snapshot            []byte
-	orderedDeliveryChan chan int
+	snapshotLastIndex int
+	snapshotLastTerm  int
+	snapshot          []byte
+
+	// ordered command delivery
+	orderedDeliveryChan chan ApplyMsg
+	pendingMsg          map[int]ApplyMsg
 }
 
 // example RequestVote RPC arguments structure.

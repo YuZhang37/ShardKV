@@ -1,0 +1,353 @@
+2023/06/26 13:38:47 server: 0, OrderedCommandDelivery gets running....
+2023/06/26 13:38:47 server: 1, OrderedCommandDelivery gets running....
+2023/06/26 13:38:47 server: 2, OrderedCommandDelivery gets running....
+2023/06/26 13:38:47 server: 3, OrderedCommandDelivery gets running....
+2023/06/26 13:38:47 server: 4, OrderedCommandDelivery gets running....
+Test (2C): Figure 8 (unreliable) ...
+2023/06/26 13:38:48 server 3 sends {true 5770 1 1 false [] 0 0}
+2023/06/26 13:38:48 server 2 sends {true 5770 1 1 false [] 0 0}
+2023/06/26 13:38:48 server 1 sends {true 5770 1 1 false [] 0 0}
+2023/06/26 13:38:48 server 4 sends {true 5770 1 1 false [] 0 0}
+2023/06/26 13:38:48 server 0 sends {true 5770 1 1 false [] 0 0}
+2023/06/26 13:38:53 server 1 sends {true 7073 2 1 false [] 0 0}
+2023/06/26 13:38:53 server 1 sends {true 445 3 4 false [] 0 0}
+2023/06/26 13:38:54 server 2 sends {true 7073 2 1 false [] 0 0}
+2023/06/26 13:38:54 server 2 sends {true 445 3 4 false [] 0 0}
+2023/06/26 13:38:54 server 2 sends {true 2857 4 5 false [] 0 0}
+2023/06/26 13:38:54 server 2 sends {true 5792 5 5 false [] 0 0}
+2023/06/26 13:38:54 server 0 sends {true 7073 2 1 false [] 0 0}
+2023/06/26 13:38:54 server 0 sends {true 445 3 4 false [] 0 0}
+2023/06/26 13:38:54 server 0 sends {true 2857 4 5 false [] 0 0}
+2023/06/26 13:38:54 server 0 sends {true 5792 5 5 false [] 0 0}
+2023/06/26 13:38:54 server 4 sends {true 7073 2 1 false [] 0 0}
+2023/06/26 13:38:54 server 4 sends {true 445 3 4 false [] 0 0}
+2023/06/26 13:38:54 server 4 sends {true 2857 4 5 false [] 0 0}
+2023/06/26 13:38:54 server 4 sends {true 5792 5 5 false [] 0 0}
+2023/06/26 13:38:54 server 2 sends {true 6949 6 5 false [] 0 0}
+2023/06/26 13:38:54 server 2 sends {true 223 7 5 false [] 0 0}
+2023/06/26 13:38:54 server 4 sends {true 6949 6 5 false [] 0 0}
+2023/06/26 13:38:54 server 4 sends {true 223 7 5 false [] 0 0}
+2023/06/26 13:38:54 server 0 sends {true 6949 6 5 false [] 0 0}
+2023/06/26 13:38:54 server 0 sends {true 223 7 5 false [] 0 0}
+2023/06/26 13:38:54 server 2 sends {true 8801 8 5 false [] 0 0}
+2023/06/26 13:38:54 server 4 sends {true 8801 8 5 false [] 0 0}
+2023/06/26 13:38:54 server 2 sends {true 1609 9 5 false [] 0 0}
+2023/06/26 13:38:54 server 2 sends {true 7918 10 5 false [] 0 0}
+2023/06/26 13:38:54 server 0 sends {true 8801 8 5 false [] 0 0}
+2023/06/26 13:38:54 server 2 sends {true 2162 11 5 false [] 0 0}
+2023/06/26 13:38:54 server 4 sends {true 1609 9 5 false [] 0 0}
+2023/06/26 13:38:54 server 4 sends {true 7918 10 5 false [] 0 0}
+2023/06/26 13:38:54 server 0 sends {true 1609 9 5 false [] 0 0}
+2023/06/26 13:38:54 server 0 sends {true 7918 10 5 false [] 0 0}
+2023/06/26 13:39:03 server 3 sends {true 7073 2 1 false [] 0 0}
+2023/06/26 13:39:03 server 3 sends {true 445 3 4 false [] 0 0}
+2023/06/26 13:39:03 server 3 sends {true 2857 4 5 false [] 0 0}
+2023/06/26 13:39:03 server 3 sends {true 5792 5 5 false [] 0 0}
+2023/06/26 13:39:03 server 3 sends {true 6949 6 5 false [] 0 0}
+2023/06/26 13:39:03 server 3 sends {true 223 7 5 false [] 0 0}
+2023/06/26 13:39:03 server 3 sends {true 8801 8 5 false [] 0 0}
+2023/06/26 13:39:03 server 3 sends {true 1609 9 5 false [] 0 0}
+2023/06/26 13:39:03 server 3 sends {true 7918 10 5 false [] 0 0}
+2023/06/26 13:39:03 server 1 sends {true 2857 4 5 false [] 0 0}
+2023/06/26 13:39:03 server 1 sends {true 5792 5 5 false [] 0 0}
+2023/06/26 13:39:03 server 1 sends {true 6949 6 5 false [] 0 0}
+2023/06/26 13:39:03 server 1 sends {true 223 7 5 false [] 0 0}
+2023/06/26 13:39:03 server 1 sends {true 8801 8 5 false [] 0 0}
+2023/06/26 13:39:03 server 1 sends {true 1609 9 5 false [] 0 0}
+2023/06/26 13:39:03 server 1 sends {true 7918 10 5 false [] 0 0}
+2023/06/26 13:39:05 server 4 sends {true 2162 11 5 false [] 0 0}
+2023/06/26 13:39:05 server 4 sends {true 4201 12 7 false [] 0 0}
+2023/06/26 13:39:05 server 4 sends {true 4961 13 13 false [] 0 0}
+2023/06/26 13:39:05 server 4 sends {true 2913 14 13 false [] 0 0}
+2023/06/26 13:39:05 server 4 sends {true 6718 15 13 false [] 0 0}
+2023/06/26 13:39:05 server 4 sends {true 9219 16 13 false [] 0 0}
+2023/06/26 13:39:05 server 4 sends {true 3983 17 13 false [] 0 0}
+2023/06/26 13:39:05 server 4 sends {true 7649 18 13 false [] 0 0}
+2023/06/26 13:39:05 server 4 sends {true 2568 19 13 false [] 0 0}
+2023/06/26 13:39:05 server 4 sends {true 1044 20 13 false [] 0 0}
+2023/06/26 13:39:05 server 4 sends {true 5182 21 13 false [] 0 0}
+2023/06/26 13:39:05 server 4 sends {true 5047 22 13 false [] 0 0}
+2023/06/26 13:39:05 server 4 sends {true 4814 23 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 2162 11 5 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 4201 12 7 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 4201 12 7 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 4961 13 13 false [] 0 0}
+==================
+WARNING: DATA RACE
+Write at 0x00c0000e6548 by goroutine 21628:
+  ??()
+      -:0 +0x104b91824
+  sync/atomic.CompareAndSwapInt32()
+      <autogenerated>:1 +0x18
+  6.5840/raft.(*Raft).ReachConsensus.func7()
+      /Users/yuzhang/Documents/mit_6_824/src/raft/raft_appendEntries.go:130 +0x40
+
+Previous read at 0x00c0000e6548 by goroutine 21648:
+  6.5840/raft.(*Raft).ApplyCommand()
+      /Users/yuzhang/Documents/mit_6_824/src/raft/raft_commandDelivery.go:13 +0x114
+  6.5840/raft.(*Raft).ReachConsensus.func7()
+      /Users/yuzhang/Documents/mit_6_824/src/raft/raft_appendEntries.go:130 +0x40
+
+Goroutine 21628 (running) created at:
+  6.5840/raft.(*Raft).ReachConsensus()
+      /Users/yuzhang/Documents/mit_6_824/src/raft/raft_appendEntries.go:130 +0x750
+  6.5840/raft.(*Raft).Start.func2()
+      /Users/yuzhang/Documents/mit_6_824/src/raft/raft_appendEntries.go:85 +0x40
+
+Goroutine 21648 (running) created at:
+  6.5840/raft.(*Raft).ReachConsensus()
+      /Users/yuzhang/Documents/mit_6_824/src/raft/raft_appendEntries.go:130 +0x750
+  6.5840/raft.(*Raft).Start.func2()
+      /Users/yuzhang/Documents/mit_6_824/src/raft/raft_appendEntries.go:85 +0x40
+==================
+2023/06/26 13:39:07 server 1 sends {true 4961 13 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 2913 14 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 6718 15 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 6718 15 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 9219 16 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 9219 16 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 3983 17 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 3983 17 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 7649 18 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 2568 19 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 1044 20 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 5182 21 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 5182 21 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 5182 21 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 5047 22 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 4814 23 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 4814 23 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 4814 23 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 4814 23 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 4814 23 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 9165 24 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 9165 24 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 9165 24 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 9165 24 13 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 4971 25 15 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 9944 26 15 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 9944 26 15 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 9944 26 15 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 9944 26 15 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 6032 27 15 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 2766 28 15 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 9148 29 15 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 9148 29 15 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 9148 29 15 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 7257 30 15 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 3833 31 15 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 1931 32 15 false [] 0 0}
+2023/06/26 13:39:07 server 1 sends {true 6892 33 15 false [] 0 0}
+2023/06/26 13:39:08 server 1 sends {true 7627 34 15 false [] 0 0}
+2023/06/26 13:39:14 server 0 sends {true 2162 11 5 false [] 0 0}
+2023/06/26 13:39:14 server 0 sends {true 4201 12 7 false [] 0 0}
+2023/06/26 13:39:14 server 0 sends {true 4961 13 13 false [] 0 0}
+2023/06/26 13:39:14 server 0 sends {true 2913 14 13 false [] 0 0}
+2023/06/26 13:39:14 server 0 sends {true 6718 15 13 false [] 0 0}
+2023/06/26 13:39:14 server 0 sends {true 9219 16 13 false [] 0 0}
+2023/06/26 13:39:14 server 0 sends {true 3983 17 13 false [] 0 0}
+2023/06/26 13:39:14 server 0 sends {true 7649 18 13 false [] 0 0}
+2023/06/26 13:39:14 server 0 sends {true 2568 19 13 false [] 0 0}
+2023/06/26 13:39:14 server 0 sends {true 1044 20 13 false [] 0 0}
+2023/06/26 13:39:14 server 0 sends {true 5182 21 13 false [] 0 0}
+2023/06/26 13:39:14 server 0 sends {true 5047 22 13 false [] 0 0}
+2023/06/26 13:39:14 server 0 sends {true 4814 23 13 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 9165 24 13 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 4971 25 15 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 9944 26 15 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 6032 27 15 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 2766 28 15 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 9148 29 15 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 7257 30 15 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 3833 31 15 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 1931 32 15 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 6892 33 15 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 7627 34 15 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 4201 12 7 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 4961 13 13 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 2913 14 13 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 6718 15 13 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 9219 16 13 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 3983 17 13 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 7649 18 13 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 2568 19 13 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 1044 20 13 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 5182 21 13 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 5047 22 13 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 4814 23 13 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 9165 24 13 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 4971 25 15 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 9944 26 15 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 6032 27 15 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 2766 28 15 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 9148 29 15 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 7257 30 15 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 3833 31 15 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 1931 32 15 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 6892 33 15 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 7627 34 15 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 2162 11 5 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 4201 12 7 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 4961 13 13 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 2913 14 13 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 6718 15 13 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 9219 16 13 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 3983 17 13 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 7649 18 13 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 2568 19 13 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 1044 20 13 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 5182 21 13 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 5047 22 13 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 4814 23 13 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 9165 24 13 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 4971 25 15 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 9944 26 15 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 6032 27 15 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 2766 28 15 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 9148 29 15 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 7257 30 15 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 3833 31 15 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 1931 32 15 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 6892 33 15 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 7627 34 15 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 6851 35 15 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 9386 36 18 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 8966 37 22 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 5747 38 22 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 6334 39 22 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 6610 40 22 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 1387 41 22 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 5119 42 22 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 1326 43 22 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 7676 44 22 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 7840 45 22 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 8380 46 25 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 7175 47 25 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 8996 48 25 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 6670 49 25 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 3475 50 25 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 4554 51 25 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 421 52 25 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 1721 53 25 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 3676 54 25 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 2680 55 25 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 5660 56 25 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 2489 57 25 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 7062 58 25 false [] 0 0}
+2023/06/26 13:39:24 server 1 sends {true 5358 59 27 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 6851 35 15 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 9386 36 18 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 8966 37 22 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 5747 38 22 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 6334 39 22 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 6610 40 22 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 1387 41 22 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 5119 42 22 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 1326 43 22 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 7676 44 22 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 7840 45 22 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 8380 46 25 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 7175 47 25 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 8996 48 25 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 6670 49 25 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 3475 50 25 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 4554 51 25 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 421 52 25 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 1721 53 25 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 3676 54 25 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 2680 55 25 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 5660 56 25 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 2489 57 25 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 7062 58 25 false [] 0 0}
+2023/06/26 13:39:24 server 3 sends {true 5358 59 27 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 6851 35 15 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 9386 36 18 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 8966 37 22 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 5747 38 22 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 6334 39 22 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 6610 40 22 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 1387 41 22 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 5119 42 22 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 1326 43 22 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 7676 44 22 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 7840 45 22 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 8380 46 25 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 7175 47 25 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 8996 48 25 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 6670 49 25 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 3475 50 25 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 4554 51 25 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 421 52 25 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 1721 53 25 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 3676 54 25 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 2680 55 25 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 5660 56 25 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 2489 57 25 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 7062 58 25 false [] 0 0}
+2023/06/26 13:39:24 server 2 sends {true 5358 59 27 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 6851 35 15 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 9386 36 18 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 8966 37 22 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 5747 38 22 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 6334 39 22 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 6610 40 22 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 1387 41 22 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 5119 42 22 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 1326 43 22 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 7676 44 22 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 7840 45 22 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 8380 46 25 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 7175 47 25 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 8996 48 25 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 6670 49 25 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 3475 50 25 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 4554 51 25 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 421 52 25 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 1721 53 25 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 3676 54 25 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 2680 55 25 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 5660 56 25 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 2489 57 25 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 7062 58 25 false [] 0 0}
+2023/06/26 13:39:24 server 0 sends {true 5358 59 27 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 9165 24 13 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 4971 25 15 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 9944 26 15 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 6032 27 15 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 2766 28 15 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 9148 29 15 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 7257 30 15 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 3833 31 15 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 1931 32 15 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 6892 33 15 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 7627 34 15 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 6851 35 15 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 9386 36 18 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 8966 37 22 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 5747 38 22 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 6334 39 22 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 6610 40 22 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 1387 41 22 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 5119 42 22 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 1326 43 22 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 7676 44 22 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 7840 45 22 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 8380 46 25 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 7175 47 25 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 8996 48 25 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 6670 49 25 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 3475 50 25 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 4554 51 25 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 421 52 25 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 1721 53 25 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 3676 54 25 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 2680 55 25 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 5660 56 25 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 2489 57 25 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 7062 58 25 false [] 0 0}
+2023/06/26 13:39:25 server 4 sends {true 5358 59 27 false [] 0 0}
+--- FAIL: TestFigure8Unreliable2C (37.95s)
+    testing.go:1446: race detected during execution of test
+FAIL
+exit status 1
+FAIL	6.5840/raft	38.202s

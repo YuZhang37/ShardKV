@@ -62,7 +62,7 @@ func (rf *Raft) persistStateWithSnapshot(format string, a ...interface{}) {
 	SnapshotDPrintf("Server %v currentTerm: %v\n", rf.me, rf.currentTerm)
 	SnapshotDPrintf("Server %v votedFor: %v\n", rf.me, rf.votedFor)
 	SnapshotDPrintf("Server %v commitIndex: %v\n", rf.me, rf.commitIndex)
-	SnapshotDPrintf("Server %v lastApplied: %v\n", rf.me, rf.lastApplied)
+	// SnapshotDPrintf("Server %v lastApplied: %v\n", rf.me, rf.lastApplied)
 	SnapshotDPrintf("Server %v log: %v at %v\n", rf.me, rf.log, rf.me)
 	SnapshotDPrintf("Server %v snapshotLastIndex: %v\n", rf.me, rf.snapshotLastIndex)
 	SnapshotDPrintf("Server %v snapshotLastTerm: %v\n", rf.me, rf.snapshotLastTerm)

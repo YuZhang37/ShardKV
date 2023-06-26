@@ -120,13 +120,15 @@ func (rf *Raft) ReachConsensus(index int) {
 	quitTimerChan := make(chan int)
 	go rf.CheckCommitTimeOut(quitTimerChan, timerChan)
 
-	harvestedServers := rf.Commit(ch0, timerChan, index)
+	committed, harvestedServers := rf.Commit(ch0, timerChan, index)
 	// stop the timer thread
 	go func(ch chan int) {
 		ch <- 1
 	}(quitTimerChan)
 	go rf.QuitBlockedHarvests(numOfPeers, harvestedServers, stopChans)
-	go rf.ApplyCommand(index)
+	if committed {
+		go rf.ApplyCommand(index)
+	}
 }
 
 /*
@@ -145,11 +147,12 @@ the leader may become a follower
 the higherTerm reply may redirected to global harvest,
 but it will be dropped and won't be processed.
 */
-func (rf *Raft) Commit(ch0 chan AppendEntriesReply, timerChan chan int, entryIndex int) map[int]bool {
+func (rf *Raft) Commit(ch0 chan AppendEntriesReply, timerChan chan int, entryIndex int) (bool, map[int]bool) {
 
 	// the leader has appended the entry
 	successCount := 1
 	tryCommit := true
+	committed := false
 	harvestedServers := make(map[int]bool)
 
 	for tryCommit {
@@ -160,7 +163,7 @@ func (rf *Raft) Commit(ch0 chan AppendEntriesReply, timerChan chan int, entryInd
 			if rf.killed() || rf.role != LEADER {
 				tryCommit = false
 			} else {
-				tryCommit, successCount = rf.OnReceivingAppendEntriesReply(&reply, successCount, entryIndex)
+				tryCommit, committed, successCount = rf.OnReceivingAppendEntriesReply(&reply, successCount, entryIndex)
 			}
 			rf.mu.Unlock()
 		case <-timerChan:
@@ -172,16 +175,18 @@ func (rf *Raft) Commit(ch0 chan AppendEntriesReply, timerChan chan int, entryInd
 				// start(comm2) may commit a higher index
 				if rf.commitIndex >= entryIndex {
 					tryCommit = false
+					committed = true
 				}
 			}
 			rf.mu.Unlock()
 		}
 	}
-	return harvestedServers
+	return committed, harvestedServers
 }
 
-func (rf *Raft) OnReceivingAppendEntriesReply(reply *AppendEntriesReply, successCount int, entryIndex int) (bool, int) {
+func (rf *Raft) OnReceivingAppendEntriesReply(reply *AppendEntriesReply, successCount int, entryIndex int) (bool, bool, int) {
 	tryCommit := true
+	committed := false
 	if reply.Success {
 		successCount++
 		if rf.matchIndices[reply.Server] < reply.LastAppendedIndex {
@@ -202,8 +207,9 @@ func (rf *Raft) OnReceivingAppendEntriesReply(reply *AppendEntriesReply, success
 			rf.commitIndex = entryIndex
 		}
 		tryCommit = false
+		committed = true
 	}
-	return tryCommit, successCount
+	return tryCommit, committed, successCount
 }
 
 /*
