@@ -566,8 +566,7 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 				rf.UpdateNextIndicesOnMisMatch(reply)
 			}
 			if rf.nextIndices[reply.Server] <= rf.snapshotLastTerm {
-				log.Fatalf("No implementation for endAndHarvestSnapshot")
-				// go rf.SendAndHarvestSnapshot(reply.Server)
+				go rf.SendAndHarvestSnapshot(reply.Server)
 			}
 			go rf.SendAppendEntries(reply.Server, issuedIndex, getReplyChan)
 			rf.mu.Unlock()
