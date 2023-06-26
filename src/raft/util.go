@@ -38,7 +38,7 @@ const DebugHeartbeat = false
 const DebugPersistence = false
 const DebugTest = false
 const DebugSnapshot = false
-const DebugTemp = false
+const DebugTemp = true
 const colorRed = "\033[0;31m"
 
 func DebugRaft(info int) {

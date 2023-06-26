@@ -179,9 +179,10 @@ type Raft struct {
 			changed when snapshot is updated:
 			Snapshot(), installSnapshot()
 	*/
-	snapshotLastIndex int
-	snapshotLastTerm  int
-	snapshot          []byte
+	snapshotLastIndex   int
+	snapshotLastTerm    int
+	snapshot            []byte
+	orderedDeliveryChan chan int
 }
 
 // example RequestVote RPC arguments structure.

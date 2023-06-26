@@ -56,6 +56,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	rf.snapshotLastIndex = 0
 	rf.snapshotLastTerm = 0
+	rf.orderedDeliveryChan = make(chan int)
+	go rf.OrderedCommandDelivery()
 
 	// initialize from state persisted before a crash
 	recover := rf.readPersist()
@@ -98,6 +100,10 @@ should call killed() to check whether it should stop.
 */
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
+	// go func() {
+	// 	time.Sleep(5 * time.Millisecond)
+	// 	close(rf.orderedDeliveryChan)
+	// }()
 }
 
 func (rf *Raft) killed() bool {
