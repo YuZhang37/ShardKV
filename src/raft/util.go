@@ -40,6 +40,7 @@ const DebugTest = false
 const DebugSnapshot = false
 const DebugApplyCommand = false
 const DebugTemp = false
+const DebugSnapshot2 = false
 const colorRed = "\033[0;31m"
 
 func DebugRaft(info int) {
@@ -101,6 +102,13 @@ func TestDPrintf(format string, a ...interface{}) (n int, err error) {
 
 func SnapshotDPrintf(format string, a ...interface{}) (n int, err error) {
 	if DebugSnapshot {
+		log.Printf(format, a...)
+	}
+	return
+}
+
+func Snapshot2DPrintf(format string, a ...interface{}) (n int, err error) {
+	if DebugSnapshot2 {
 		log.Printf(format, a...)
 	}
 	return

@@ -23,7 +23,7 @@ that index. Raft should now trim its log as much as possible.
 index is always ≤ the commit index on this server.
 */
 func (rf *Raft) Snapshot(lastIncludedIndex int, snapshot []byte) {
-	TempDPrintf("server: %v, Snapshot() is called with lastIncludedIndex %v,\n", rf.me, lastIncludedIndex)
+	Snapshot2DPrintf("server: %v, Snapshot() is called with lastIncludedIndex %v,\n", rf.me, lastIncludedIndex)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	if lastIncludedIndex <= 0 || lastIncludedIndex > rf.commitIndex {
@@ -51,7 +51,7 @@ func (rf *Raft) Snapshot(lastIncludedIndex int, snapshot []byte) {
 		not necessary, if saving to disk failed, then the server should panic
 	*/
 	rf.persistStateWithSnapshot("Server %v, Snapshot() lastIncludedIndex: %v, indexInLiveLog in log: %v", rf.me, lastIncludedIndex, indexInLiveLog)
-	TempDPrintf("Server %v, Snapshot() finished : lastIndex: %v, log: %v\n", rf.me, lastIncludedIndex, rf.log)
+	Snapshot2DPrintf("Server %v, Snapshot() finished : lastIndex: %v, log: %v\n", rf.me, lastIncludedIndex, rf.log)
 }
 
 /*
@@ -78,7 +78,7 @@ if RPC failed, including failed server, retries infinitely.
 if ok, returns the reply for further processing
 */
 func (rf *Raft) SendSnapshot(server int, replyChan chan<- SendSnapshotReply) {
-	TempDPrintf("server: %v, SendSnapshot() is called with %v\n", rf.me, server)
+	Snapshot2DPrintf("server: %v, SendSnapshot() is called with %v\n", rf.me, server)
 	msg := SendSnapshotReply{
 		Installed: false,
 	}
@@ -105,11 +105,11 @@ func (rf *Raft) SendSnapshot(server int, replyChan chan<- SendSnapshotReply) {
 		time.Sleep(time.Duration(REAPPENDTIMEOUT) * time.Millisecond)
 	}
 	replyChan <- msg
-	TempDPrintf("server: %v, SendSnapshot() finished with msg: %v\n", rf.me, msg)
+	Snapshot2DPrintf("server: %v, SendSnapshot() finished with msg: %v\n", rf.me, msg)
 }
 
 func (rf *Raft) InstallSnapshot(args *SendSnapshotArgs, reply *SendSnapshotReply) {
-	TempDPrintf("server: %v, InstallSnapshot() is called with args: %v\n", rf.me, *args)
+	Snapshot2DPrintf("server: %v, InstallSnapshot() is called with args: %v\n", rf.me, *args)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	reply.Term = rf.currentTerm
@@ -136,9 +136,9 @@ func (rf *Raft) InstallSnapshot(args *SendSnapshotArgs, reply *SendSnapshotReply
 	}
 
 	// the snapshot is accepted
-	TempDPrintf("server: %v, snapshot is accepted: args.LeaderId: %v, args.Term: %v, args.LastIncludedIndex: %v, args.LastIncludedTerm: %v\n", rf.me, args.LeaderId, args.Term, args.LastIncludedIndex, args.LastIncludedTerm)
+	Snapshot2DPrintf("server: %v, snapshot is accepted: args.LeaderId: %v, args.Term: %v, args.LastIncludedIndex: %v, args.LastIncludedTerm: %v\n", rf.me, args.LeaderId, args.Term, args.LastIncludedIndex, args.LastIncludedTerm)
 	// rf.appliedLock.Lock()
-	// TempDPrintf("server: %v, lastApplied: %v, commitIndex: %v\n", rf.me, rf.lastApplied, rf.commitIndex)
+	// Snapshot2DPrintf("server: %v, lastApplied: %v, commitIndex: %v\n", rf.me, rf.lastApplied, rf.commitIndex)
 	// rf.appliedLock.Unlock()
 	reply.Installed = true
 	reply.LastIncludedIndex = args.LastIncludedIndex
@@ -160,17 +160,17 @@ func (rf *Raft) InstallSnapshot(args *SendSnapshotArgs, reply *SendSnapshotReply
 		// keep all log entries following LastIncludedIndex
 		// installed=true
 		rf.log = rf.log[lastIndex+1:]
-		rf.appliedLock.Lock()
-		TempDPrintf("server: %v log matching at %v\n", rf.me, args.LastIncludedIndex)
+		// rf.appliedLock.Lock()
+		// Snapshot2DPrintf("server: %v log matching at %v\n", rf.me, args.LastIncludedIndex)
 
-		rf.appliedLock.Unlock()
+		// rf.appliedLock.Unlock()
 	}
 	rf.persistStateWithSnapshot("InstallSnapshot() args: %v", args)
 	if args.LastIncludedIndex > rf.commitIndex {
 		rf.commitIndex = args.LastIncludedIndex
 	}
 	go rf.ApplySnapshot()
-	TempDPrintf("server: %v, InstallSnapshot() finished: log: %v\n", rf.me, rf.log)
+	Snapshot2DPrintf("server: %v, InstallSnapshot() finished: log: %v\n", rf.me, rf.log)
 }
 
 /*
@@ -182,11 +182,11 @@ if contacting a server with higher term, becomes a follower
 if installed, updating nextIndices[Server]
 */
 func (rf *Raft) SendAndHarvestSnapshot(server int) {
-	TempDPrintf("server: %v, SendAndHarvestSnapshot() is called with %v\n", rf.me, server)
+	Snapshot2DPrintf("server: %v, SendAndHarvestSnapshot() is called with %v\n", rf.me, server)
 	replyChan := make(chan SendSnapshotReply)
 	go rf.SendSnapshot(server, replyChan)
 	reply := <-replyChan
-	TempDPrintf("server: %v, SendAndHarvestSnapshot() %v reply: %v\n", rf.me, server, reply)
+	Snapshot2DPrintf("server: %v, SendAndHarvestSnapshot() %v reply: %v\n", rf.me, server, reply)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	if !reply.Installed && reply.Term > rf.currentTerm {
