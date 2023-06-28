@@ -113,24 +113,24 @@ func (rf *Raft) killed() bool {
 	return z == 1
 }
 
-func (rf *Raft) IncrementLastApplied(old int) {
-	// atomic.AddInt32(&rf.lastApplied, 1)
-	// rf.mu.Lock()
-	// if rf.lastApplied == int32(old) {
-	// 	rf.lastApplied++
-	// }
-	// rf.mu.Unlock()
-	atomic.CompareAndSwapInt32(&rf.lastApplied, int32(old), int32(old+1))
+// func (rf *Raft) IncrementLastApplied(old int) {
+// 	// atomic.AddInt32(&rf.lastApplied, 1)
+// 	// rf.mu.Lock()
+// 	// if rf.lastApplied == int32(old) {
+// 	// 	rf.lastApplied++
+// 	// }
+// 	// rf.mu.Unlock()
+// 	atomic.CompareAndSwapInt32(&rf.lastApplied, int32(old), int32(old+1))
 
-}
+// }
 
-func (rf *Raft) GetLastApplied() int32 {
-	z := atomic.LoadInt32(&rf.lastApplied)
-	// rf.mu.Lock()
-	// z := rf.lastApplied
-	// rf.mu.Unlock()
-	return z
-}
+// func (rf *Raft) GetLastApplied() int32 {
+// 	z := atomic.LoadInt32(&rf.lastApplied)
+// 	// rf.mu.Lock()
+// 	// z := rf.lastApplied
+// 	// rf.mu.Unlock()
+// 	return z
+// }
 
 func (rf *Raft) isLeader() bool {
 	// ans := atomic.LoadInt32(&rf.role)

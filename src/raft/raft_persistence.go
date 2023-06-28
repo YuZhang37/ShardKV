@@ -121,17 +121,6 @@ func (rf *Raft) readPersist() bool {
 		return true
 	}
 	rf.snapshot = snapshot
-	msg := ApplyMsg{
-		CommandValid:  false,
-		SnapshotValid: true,
-		Snapshot:      snapshot,
-		SnapshotTerm:  rf.snapshotLastTerm,
-		SnapshotIndex: rf.snapshotLastIndex,
-	}
-	go func(msg ApplyMsg) {
-		SnapshotDPrintf("Waiting for snapshot to be received...\n")
-		rf.applyCh <- msg
-		SnapshotDPrintf("snapshot received!\n")
-	}(msg)
+	go rf.ApplySnapshot()
 	return true
 }

@@ -565,8 +565,9 @@ func (rf *Raft) HarvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 			if reply.MisMatched {
 				rf.UpdateNextIndicesOnMisMatch(reply)
 			}
-			if rf.nextIndices[reply.Server] <= rf.snapshotLastTerm {
+			if rf.nextIndices[reply.Server] <= rf.snapshotLastIndex {
 				go rf.SendAndHarvestSnapshot(reply.Server)
+				// log.Printf("call rf.SendAndHarvestSnapshot(reply.Server), need to de-dup")
 			}
 			go rf.SendAppendEntries(reply.Server, issuedIndex, getReplyChan)
 			rf.mu.Unlock()
