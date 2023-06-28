@@ -37,6 +37,10 @@ const DebugAppendEntries = false
 const DebugHeartbeat = false
 const DebugPersistence = false
 const DebugTest = false
+const DebugSnapshot = false
+const DebugApplyCommand = false
+const DebugTemp = false
+const DebugSnapshot2 = false
 const colorRed = "\033[0;31m"
 
 func DebugRaft(info int) {
@@ -92,6 +96,34 @@ func PersistenceDPrintf(format string, a ...interface{}) (n int, err error) {
 func TestDPrintf(format string, a ...interface{}) (n int, err error) {
 	if DebugTest {
 		log.Printf("\n \033[0;31m "+format+" \n", a...)
+	}
+	return
+}
+
+func SnapshotDPrintf(format string, a ...interface{}) (n int, err error) {
+	if DebugSnapshot {
+		log.Printf(format, a...)
+	}
+	return
+}
+
+func Snapshot2DPrintf(format string, a ...interface{}) (n int, err error) {
+	if DebugSnapshot2 {
+		log.Printf(format, a...)
+	}
+	return
+}
+
+func TempDPrintf(format string, a ...interface{}) (n int, err error) {
+	if DebugTemp {
+		log.Printf(format, a...)
+	}
+	return
+}
+
+func ApplyCommandDPrintf(format string, a ...interface{}) (n int, err error) {
+	if DebugApplyCommand {
+		log.Printf(format, a...)
 	}
 	return
 }

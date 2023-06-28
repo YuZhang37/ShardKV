@@ -68,16 +68,6 @@ type ApplyMsg struct {
 	SnapshotIndex int
 }
 
-// type Role int32
-
-// const (
-//
-//	FOLLOWER  Role = 1
-//	CANDIDATE Role = 2
-//	LEADER    Role = 3
-//
-// )
-
 const (
 	FOLLOWER  int32 = 1
 	CANDIDATE int32 = 2
@@ -113,13 +103,14 @@ type Raft struct {
 		commitIndex and lastApplied don't need to be reset on leader change
 	*/
 	commitIndex int
-	lastApplied int
+	lastApplied int32
 
 	// need to be persistent
 	currentTerm int
 	/*
 		-1 for nil, initialized to -1
 		every time currentTerm increments, votedFor needs to reset to -1
+		votedFor is maintained during the whole term, even when the leader is elected, which can avoid the election issued by a server on the same term.
 	*/
 	votedFor int
 	log      []LogEntry
@@ -181,6 +172,22 @@ type Raft struct {
 	hbTimeOut   int
 	eleTimeOut  int
 	randomRange int
+
+	/*
+		for snapshot, needs to be persistent
+			initialized to 0,
+			changed when snapshot is updated:
+			Snapshot(), installSnapshot()
+	*/
+	snapshotLastIndex int
+	snapshotLastTerm  int
+	snapshot          []byte
+
+	// ordered command delivery
+	// lock across channel, may held for long, don't try to use this lock inside rf.mu
+	appliedLock         sync.Mutex
+	orderedDeliveryChan chan ApplyMsg
+	pendingMsg          map[int]ApplyMsg
 }
 
 // example RequestVote RPC arguments structure.
@@ -244,6 +251,26 @@ type AppendEntriesReply struct {
 	LogLength int
 }
 
+type SendSnapshotArgs struct {
+	Term              int
+	LeaderId          int
+	LastIncludedIndex int
+	LastIncludedTerm  int
+	Snapshot          []byte
+}
+
+type SendSnapshotReply struct {
+	// the server's Term
+	Term int
+	// the receiving server
+	Server int
+	// info on the latest snapshot the server stores
+	LastIncludedIndex int
+	LastIncludedTerm  int
+	// false when contacting servers with higher term or snapshot is not more up-to-date than the server's
+	Installed bool
+}
+
 /*
 if a condition needs to check within a lock,
 and the condition may change when the code leaves the lock and acquires the lock again
@@ -252,4 +279,24 @@ we need to keep checking the condition for correctness every time we leave the l
 critical thing:
 if a leader becomes a follower, it must not send appendEntries requests,
 otherwise, the servers will be in inconsistent states
+
+the key thing is the currentTerm changed when the leader becomes the follower
+
+for the conflicting entry at some index of both logs,
+can the term of the follower be larger than the leader?
+
+machine 0 		:		1,1,2
+machine 1 leader: 		1,1,1,3,3,9
+machine 2 follower: 	1,1,7,8,8,8
+
+could this happen?
+machine 1 is elected to be leader for term 2, appends 2, 2
+but doesn't commit them, an elected to be leader for term 9
+
+The leader initially guesses the nextIndex for a server to be len(log) + 1, after get the reply from appendEntries to that server, the leader can make another guess.
+
+if the follower's reply has a higher term conflicting term,
+backing off one such term in the next appendEntries
+if the follower's reply has a lower term...
+backing off at least one term in the leader's log in the next appendEntries.
 */
