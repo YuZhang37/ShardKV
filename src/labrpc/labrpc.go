@@ -1,5 +1,17 @@
 package labrpc
 
+/*
+The labrpc package simulates a lossy network, in which servers
+may be unreachable, and in which requests and replies may be lost.
+Call() sends a request and waits for a reply. If a reply arrives
+within a timeout interval, Call() returns true; otherwise
+Call() returns false. Thus Call() may not return for a while.
+A false return can be caused by a dead server, a live server that
+can't be reached, a lost request, or a lost reply.
+
+<Call() has no timeout if the server is running slow>
+
+*/
 //
 // channel-based RPC, for 6.5840 labs.
 //

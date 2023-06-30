@@ -120,6 +120,7 @@ func (rf *Raft) ReachConsensus(index int) {
 	quitTimerChan := make(chan int)
 	go rf.CheckCommitTimeOut(quitTimerChan, timerChan)
 
+	// rf.Commit may never reply
 	committed, harvestedServers := rf.Commit(ch0, timerChan, index)
 	// stop the timer thread
 	go func(ch chan int) {
@@ -438,9 +439,12 @@ func (rf *Raft) SendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 	args := rf.GetAppendEntriesArgs(server, next, issueEntryIndex)
 	AppendEntries2DPrintf(funct, "args: %v at %v to %v\n", args, rf.me, server)
 	AppendEntries2DPrintf(funct, "log: %v at %v \n", rf.log, rf.me)
+	// targetServer := rf.peers[server]
 	rf.mu.Unlock()
 	reply := AppendEntriesReply{}
 	ok := rf.peers[server].Call("Raft.AppendEntries", &args, &reply)
+	// test shows race condition here once in 30 tests for TestOnePartition3A
+	// ok := targetServer.Call("Raft.AppendEntries", &args, &reply)
 	if !ok {
 		// RPC call failed
 		ch <- fakeReply

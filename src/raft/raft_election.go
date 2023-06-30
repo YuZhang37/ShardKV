@@ -174,6 +174,7 @@ func (rf *Raft) UpgradeToCandidate() {
 
 func (rf *Raft) UpgradeToLeader() {
 	rf.role = LEADER
+	rf.SignalDemotion = make(chan int)
 	rf.currentLeader = rf.me
 	for i := 0; i < len(rf.peers); i++ {
 		if i == rf.me {

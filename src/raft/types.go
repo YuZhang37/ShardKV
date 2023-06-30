@@ -97,6 +97,9 @@ type Raft struct {
 	dead      int32               // set by Kill()
 	applyCh   chan ApplyMsg
 
+	SignalKilled   chan int
+	SignalDemotion chan int
+
 	/*
 		states for all servers (log index)
 		log index always starts with 1, not the same as array index

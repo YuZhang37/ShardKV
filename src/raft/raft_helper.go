@@ -28,6 +28,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.dead = 0
 	rf.applyCh = applyCh
 
+	rf.SignalKilled = make(chan int)
+	rf.SignalDemotion = make(chan int)
+
 	rf.commitIndex = 0
 	rf.lastApplied = 0
 
@@ -102,6 +105,7 @@ should call killed() to check whether it should stop.
 */
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
+	close(rf.SignalKilled)
 	// go func() {
 	// 	time.Sleep(5 * time.Millisecond)
 	// 	close(rf.orderedDeliveryChan)
@@ -141,6 +145,22 @@ func (rf *Raft) isLeader() bool {
 	return ans == LEADER
 }
 
+func (rf *Raft) GetLeaderId() int {
+	// ans := atomic.LoadInt32(&rf.role)
+	// return ans == LEADER
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	ans := rf.currentLeader
+	return ans
+}
+
+func (rf *Raft) IsValidLeader() bool {
+	if rf.killed() || !rf.isLeader() {
+		return false
+	}
+	return true
+}
+
 /*
 must hold the lock rf.mu to call this function
 
@@ -157,6 +177,9 @@ func (rf *Raft) onReceiveHigherTerm(term int) int {
 	originalTerm := rf.currentTerm
 
 	rf.currentTerm = term
+	if rf.role == LEADER {
+		close(rf.SignalDemotion)
+	}
 	rf.role = FOLLOWER
 	// set it to -1 is not a problem, since this leader did not receive vote from this server
 	rf.votedFor = -1
