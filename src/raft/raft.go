@@ -33,14 +33,17 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	newLog := append(rf.log, entry)
 	size := rf.getLogSize(newLog)
-	if size >= rf.maxLeaderLogSize && rf.commitIndex > rf.snapshotLastIndex {
-		rf.insideApplyCommand(rf.commitIndex, true)
-		rf.signalSnapshot()
-		rf.persistState("server %v Start() snapshots for entry %v", rf.me, entry)
-		newLog = append(rf.log, entry)
-		size = rf.getLogSize(newLog)
-		if size >= rf.maxLeaderLogSize {
-			return -1, -1, true
+	if rf.maxLeaderLogSize != -1 {
+		// snapshot enabled
+		if size >= rf.maxLeaderLogSize && rf.commitIndex > rf.snapshotLastIndex {
+			rf.insideApplyCommand(rf.commitIndex, true)
+			rf.signalSnapshot()
+			rf.persistState("server %v Start() snapshots for entry %v", rf.me, entry)
+			newLog = append(rf.log, entry)
+			size = rf.getLogSize(newLog)
+			if size >= rf.maxLeaderLogSize {
+				return -1, -1, true
+			}
 		}
 	}
 	rf.log = newLog

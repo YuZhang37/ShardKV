@@ -31,10 +31,19 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.SignalKilled = make(chan int)
 	rf.SignalSnapshot = make(chan int)
 	rf.SnapshotChan = make(chan SnapshotInfo)
-	rf.maxRaftState = opts[0].(int)
-	rf.maxLeaderLogSize = rf.maxRaftState - RESERVESPACE
-	rf.maxFollowerLogSize = rf.maxLeaderLogSize - MAXLOGENTRYSIZE
+	if len(opts) > 0 {
+		rf.maxRaftState = opts[0].(int)
+	} else {
+		rf.maxRaftState = -1
+	}
 
+	if rf.maxRaftState != -1 {
+		rf.maxLeaderLogSize = rf.maxRaftState - RESERVESPACE
+		rf.maxFollowerLogSize = rf.maxLeaderLogSize - MAXLOGENTRYSIZE
+	} else {
+		rf.maxLeaderLogSize = -1
+		rf.maxFollowerLogSize = -1
+	}
 	rf.commitIndex = 0
 	rf.lastApplied = 0
 

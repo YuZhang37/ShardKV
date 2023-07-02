@@ -249,7 +249,10 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.me = me
 	kv.SignalKilled = make(chan int)
 
-	maxRaftState = 8 * maxRaftState
+	// command size checking will not be disabled
+	if maxRaftState != -1 {
+		maxRaftState = 8 * maxRaftState
+	}
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh, maxRaftState)
 	kv.maxRaftState = maxRaftState

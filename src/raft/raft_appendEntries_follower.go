@@ -141,7 +141,7 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 		entry := args.Entries[j]
 		newLog := append(rf.log, entry)
 		size := rf.getLogSize(newLog)
-		if size >= rf.maxFollowerLogSize && rf.commitIndex > rf.snapshotLastIndex {
+		if rf.maxFollowerLogSize != -1 && size >= rf.maxFollowerLogSize && rf.commitIndex > rf.snapshotLastIndex {
 			// there log entries to compact, compact them
 			rf.insideApplyCommand(rf.commitIndex, true)
 			rf.signalSnapshot()
@@ -151,7 +151,7 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 				rf.me, args, rf.currentAppended)
 		}
 
-		if size < rf.maxFollowerLogSize {
+		if rf.maxFollowerLogSize == -1 || size < rf.maxFollowerLogSize {
 			rf.log = newLog
 			rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
 			if entry.Index <= args.LeaderCommitIndex {

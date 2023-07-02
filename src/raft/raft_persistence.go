@@ -71,7 +71,7 @@ func (rf *Raft) persistStateWithSnapshot(format string, a ...interface{}) {
 	// rf.appliedLock.Unlock()
 	KVStoreDPrintf("Server: %v persists rf.commitIndex: %v, rf.currentTerm: %v, rf.votedFor: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v rf.log: %v\n", rf.me, rf.commitIndex, rf.currentTerm, rf.votedFor, rf.snapshotLastIndex, rf.snapshotLastTerm, rf.log)
 	data := rf.getRaftStateData()
-	if len(data) >= rf.maxRaftState {
+	if rf.maxRaftState != -1 && len(data) >= rf.maxRaftState {
 		log.Fatalf("size of raft state: %v exceeds maxRaftState: %v\n", len(data), rf.maxRaftState)
 	}
 	rf.persister.Save(data, rf.snapshot)
