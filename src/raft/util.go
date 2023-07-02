@@ -40,7 +40,8 @@ const DebugTest = false
 const DebugSnapshot = false
 const DebugApplyCommand = false
 const DebugTemp = false
-const DebugSnapshot2 = false
+const DebugSnapshot2 = true
+const DebugKVStore = true
 const colorRed = "\033[0;31m"
 
 func DebugRaft(info int) {
@@ -123,6 +124,13 @@ func TempDPrintf(format string, a ...interface{}) (n int, err error) {
 
 func ApplyCommandDPrintf(format string, a ...interface{}) (n int, err error) {
 	if DebugApplyCommand {
+		log.Printf(format, a...)
+	}
+	return
+}
+
+func KVStoreDPrintf(format string, a ...interface{}) (n int, err error) {
+	if DebugKVStore {
 		log.Printf(format, a...)
 	}
 	return

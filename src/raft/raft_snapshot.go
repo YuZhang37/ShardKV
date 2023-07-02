@@ -6,16 +6,6 @@ import (
 )
 
 /*
-TestSnapshotBasic2D						pass
-TestSnapshotInstall2D					pass
-TestSnapshotInstallUnreliable2D			pass
-TestSnapshotInstallCrash2D
-TestSnapshotInstallUnCrash2D
-TestSnapshotAllCrash2D					pass
-TestSnapshotInit2D						pass
-*/
-
-/*
 the service says it has created a snapshot that has
 all info up to and including index. this means the
 service no longer needs the log through (and including)
@@ -23,9 +13,24 @@ that index. Raft should now trim its log as much as possible.
 index is always ≤ the commit index on this server.
 */
 func (rf *Raft) Snapshot(lastIncludedIndex int, snapshot []byte) {
-	Snapshot2DPrintf("server: %v, Snapshot() is called with lastIncludedIndex %v,\n", rf.me, lastIncludedIndex)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	Snapshot2DPrintf("server: %v, Snapshot() is called with lastIncludedIndex %v,\n", rf.me, lastIncludedIndex)
+	indexInLiveLog := rf.insideSnapshot(lastIncludedIndex, snapshot)
+	if indexInLiveLog == -1 {
+		return
+	}
+	rf.persistState("Server %v, Snapshot() lastIncludedIndex: %v, indexInLiveLog in log: %v", rf.me, lastIncludedIndex, indexInLiveLog)
+}
+
+/*
+the same as Snapshot, except that
+1. rf.mu is held in the calling function
+2. state and snapshot is not persisted
+*/
+func (rf *Raft) insideSnapshot(lastIncludedIndex int, snapshot []byte) int {
+	Snapshot2DPrintf("server: %v, insideSnapshot() is called with lastIncludedIndex %v,\n", rf.me, lastIncludedIndex)
+
 	if lastIncludedIndex <= 0 || lastIncludedIndex > rf.commitIndex {
 		log.Fatalf("Snapshot Error: lastIndex %v, commitIndex: %v\n", lastIncludedIndex, rf.commitIndex)
 	}
@@ -36,7 +41,7 @@ func (rf *Raft) Snapshot(lastIncludedIndex int, snapshot []byte) {
 		the server takes snapshot too soon
 	*/
 	if lastIncludedIndex <= rf.snapshotLastIndex {
-		return
+		return -1
 	}
 	indexInLiveLog := rf.findEntryWithIndexInLog(lastIncludedIndex, rf.log, rf.snapshotLastIndex)
 	if indexInLiveLog >= len(rf.log) || indexInLiveLog < 0 {
@@ -50,8 +55,8 @@ func (rf *Raft) Snapshot(lastIncludedIndex int, snapshot []byte) {
 		should we save to disk then update states in memory?
 		not necessary, if saving to disk failed, then the server should panic
 	*/
-	rf.persistStateWithSnapshot("Server %v, Snapshot() lastIncludedIndex: %v, indexInLiveLog in log: %v", rf.me, lastIncludedIndex, indexInLiveLog)
-	Snapshot2DPrintf("Server %v, Snapshot() finished : lastIndex: %v, log: %v\n", rf.me, lastIncludedIndex, rf.log)
+	Snapshot2DPrintf("Server %v, insideSnapshot() finished : lastIndex: %v, log: %v\n", rf.me, lastIncludedIndex, rf.log)
+	return indexInLiveLog
 }
 
 /*
@@ -131,7 +136,7 @@ func (rf *Raft) InstallSnapshot(args *SendSnapshotArgs, reply *SendSnapshotReply
 		reply.Installed = false
 		reply.LastIncludedIndex = rf.snapshotLastIndex
 		reply.LastIncludedTerm = rf.snapshotLastTerm
-		rf.persistStateWithSnapshot("InstallSnapshot() args: %v", args)
+		rf.persistState("InstallSnapshot() args: %v", args)
 		return
 	}
 
@@ -165,10 +170,10 @@ func (rf *Raft) InstallSnapshot(args *SendSnapshotArgs, reply *SendSnapshotReply
 
 		// rf.appliedLock.Unlock()
 	}
-	rf.persistStateWithSnapshot("InstallSnapshot() args: %v", args)
 	if args.LastIncludedIndex > rf.commitIndex {
 		rf.commitIndex = args.LastIncludedIndex
 	}
+	rf.persistState("InstallSnapshot() args: %v", args)
 	go rf.ApplySnapshot()
 	Snapshot2DPrintf("server: %v, InstallSnapshot() finished: log: %v\n", rf.me, rf.log)
 }
@@ -191,7 +196,7 @@ func (rf *Raft) SendAndHarvestSnapshot(server int) {
 	defer rf.mu.Unlock()
 	if !reply.Installed && reply.Term > rf.currentTerm {
 		rf.onReceiveHigherTerm(reply.Term)
-		rf.persistStateWithSnapshot("SendAndHarvestSnapshot(): %v", server)
+		rf.persistState("SendAndHarvestSnapshot(): %v", server)
 		return
 	}
 	if reply.Installed {

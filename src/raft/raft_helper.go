@@ -18,7 +18,7 @@ import (
 // for any long-running work.
 */
 func Make(peers []*labrpc.ClientEnd, me int,
-	persister *Persister, applyCh chan ApplyMsg) *Raft {
+	persister *Persister, applyCh chan ApplyMsg, opts ...interface{}) *Raft {
 
 	// no lock is need at initialization
 	rf := &Raft{}
@@ -29,7 +29,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.applyCh = applyCh
 
 	rf.SignalKilled = make(chan int)
-	rf.SignalDemotion = make(chan int)
+	rf.SignalSnapshot = make(chan int)
+	rf.SnapshotChan = make(chan SnapshotInfo)
+	rf.maxRaftState = opts[0].(int)
+	rf.maxLogSize = rf.maxRaftState - RESERVESPACE
 
 	rf.commitIndex = 0
 	rf.lastApplied = 0

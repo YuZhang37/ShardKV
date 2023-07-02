@@ -82,10 +82,24 @@ const (
 	REAPPENDTIMEOUT    int = 50
 )
 
+const (
+	/*
+		this size reserved for persistent fields
+		currentTerm and votedFor
+		snapshotLastIndex and snapshotLastTerm
+	*/
+	RESERVESPACE int = 64 * 4
+)
+
 type LogEntry struct {
 	Term    int
 	Index   int
 	Command interface{}
+}
+
+type SnapshotInfo struct {
+	Data              []byte
+	LastIncludedIndex int
 }
 
 // A Go object implementing a single Raft peer.
@@ -97,8 +111,19 @@ type Raft struct {
 	dead      int32               // set by Kill()
 	applyCh   chan ApplyMsg
 
-	SignalKilled   chan int
+	SignalKilled chan int
+	/*
+	 only creates when the server is the leader, and closes on the server is no longer the leader
+	 creates when winning an election
+	 closes when the server is the leader and contacts a higher term
+	*/
 	SignalDemotion chan int
+
+	SignalSnapshot chan int
+	SnapshotChan   chan SnapshotInfo
+
+	maxRaftState int
+	maxLogSize   int
 
 	/*
 		states for all servers (log index)
