@@ -33,30 +33,18 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	newLog := append(rf.log, entry)
 	size := rf.getLogSize(newLog)
-	if size >= rf.maxLogSize {
-		firstEntry := LogEntry{}
-		lastEntry := LogEntry{}
-		if len(rf.log) > 0 {
-			firstEntry = rf.log[0]
-			lastEntry = rf.log[len(rf.log)-1]
-		}
-		rf.appliedLock.Lock()
-		lastApplied := rf.lastApplied
-		rf.appliedLock.Unlock()
-		KVStoreDPrintf("from leader: before signalSnapshot:\n rf.me: %v, rf.role: %v, rf.appliedIndex: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, logsize: %v, first log entry: %v, last log entry: %v\n", rf.me, rf.role, lastApplied, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), firstEntry, lastEntry)
+	if size >= rf.maxLeaderLogSize && rf.commitIndex > rf.snapshotLastIndex {
+		rf.insideApplyCommand(rf.commitIndex, true)
 		rf.signalSnapshot()
-		rf.appliedLock.Lock()
-		lastApplied = rf.lastApplied
-		rf.appliedLock.Unlock()
-		KVStoreDPrintf("from leader: after signalSnapshot:\n rf.me: %v, rf.role: %v, rf.appliedIndex: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, logsize: %v, first log entry: %v, last log entry: %v\n", rf.me, rf.role, lastApplied, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), firstEntry, lastEntry)
+		rf.persistState("server %v Start() snapshots for entry %v", rf.me, entry)
 		newLog = append(rf.log, entry)
 		size = rf.getLogSize(newLog)
-		if size >= rf.maxLogSize {
+		if size >= rf.maxLeaderLogSize {
 			return -1, -1, true
 		}
 	}
 	rf.log = newLog
-	rf.persistState("Start()")
+	rf.persistState("server %v Start() appends entry %v", rf.me, entry)
 	AppendEntriesDPrintf("Command %v is appended on %v at index of %v\n", command, rf.me, len(rf.log))
 
 	go rf.reachConsensus(entry.Index)

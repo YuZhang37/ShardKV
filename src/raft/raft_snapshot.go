@@ -115,6 +115,7 @@ func (rf *Raft) SendSnapshot(server int, replyChan chan<- SendSnapshotReply) {
 
 func (rf *Raft) InstallSnapshot(args *SendSnapshotArgs, reply *SendSnapshotReply) {
 	Snapshot2DPrintf("server: %v, InstallSnapshot() is called with args: %v\n", rf.me, *args)
+	KVStoreDPrintf("server: %v, InstallSnapshot() is called with args: %v\n", rf.me, *args)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	reply.Term = rf.currentTerm
@@ -142,6 +143,7 @@ func (rf *Raft) InstallSnapshot(args *SendSnapshotArgs, reply *SendSnapshotReply
 
 	// the snapshot is accepted
 	Snapshot2DPrintf("server: %v, snapshot is accepted: args.LeaderId: %v, args.Term: %v, args.LastIncludedIndex: %v, args.LastIncludedTerm: %v\n", rf.me, args.LeaderId, args.Term, args.LastIncludedIndex, args.LastIncludedTerm)
+	KVStoreDPrintf("server: %v, snapshot is accepted: args.LeaderId: %v, args.Term: %v, args.LastIncludedIndex: %v, args.LastIncludedTerm: %v\n", rf.me, args.LeaderId, args.Term, args.LastIncludedIndex, args.LastIncludedTerm)
 	// rf.appliedLock.Lock()
 	// Snapshot2DPrintf("server: %v, lastApplied: %v, commitIndex: %v\n", rf.me, rf.lastApplied, rf.commitIndex)
 	// rf.appliedLock.Unlock()
@@ -176,6 +178,7 @@ func (rf *Raft) InstallSnapshot(args *SendSnapshotArgs, reply *SendSnapshotReply
 	rf.persistState("InstallSnapshot() args: %v", args)
 	go rf.ApplySnapshot()
 	Snapshot2DPrintf("server: %v, InstallSnapshot() finished: log: %v\n", rf.me, rf.log)
+	KVStoreDPrintf("server: %v, InstallSnapshot() finished: log: %v\n", rf.me, rf.log)
 }
 
 /*
@@ -207,6 +210,7 @@ func (rf *Raft) SendAndHarvestSnapshot(server int) {
 }
 
 func (rf *Raft) signalSnapshot() bool {
+	Snapshot2DPrintf("server: %v, SendSnapshot() is called\n", rf.me)
 	killed := false
 	received := false
 	sent := false
@@ -231,5 +235,6 @@ func (rf *Raft) signalSnapshot() bool {
 			}
 		}
 	}
+	Snapshot2DPrintf("server: %v, SendSnapshot() is finished: %v\n", rf.me, sent && received)
 	return sent && received
 }

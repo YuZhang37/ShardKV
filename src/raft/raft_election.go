@@ -203,6 +203,7 @@ func (rf *Raft) upgradeToLeader() {
 
 	ElectionDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
 	TestDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
+	KVStoreDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
 }
 
 func (rf *Raft) getRequestVoteArgs() RequestVoteArgs {

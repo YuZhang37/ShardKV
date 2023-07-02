@@ -89,7 +89,8 @@ const (
 		currentTerm and votedFor
 		snapshotLastIndex and snapshotLastTerm
 	*/
-	RESERVESPACE int = 64 * 4
+	RESERVESPACE    int = 64 * 4
+	MAXLOGENTRYSIZE int = 750
 )
 
 type LogEntry struct {
@@ -123,8 +124,9 @@ type Raft struct {
 	SignalSnapshot chan int
 	SnapshotChan   chan SnapshotInfo
 
-	maxRaftState int
-	maxLogSize   int
+	maxRaftState       int
+	maxFollowerLogSize int
+	maxLeaderLogSize   int
 
 	/*
 		states for all servers (log index)

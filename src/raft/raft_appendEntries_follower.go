@@ -1,7 +1,5 @@
 package raft
 
-import "time"
-
 /*
 follower or candidate server will execute this function for heartbeat or appendEntries,
 for heartbeat: args.IssueEntryIndex is -1 and no entries
@@ -47,6 +45,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	} else {
 		rf.appendNewEntriesFromArgs(indexInLiveLog, args, reply)
 	}
+	// need to update commitIndex on receiving heartbeat
 	rf.updateCommitIndexOnReceivingAppendEntries(args)
 	AppendEntries2DPrintf(funct, "Command from %v is appended by %v at index of %v\n", args.LeaderId, rf.me, len(rf.log))
 	AppendEntries2DPrintf(funct, "logs on server %v: %v\n", rf.me, rf.log)
@@ -142,43 +141,32 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 		entry := args.Entries[j]
 		newLog := append(rf.log, entry)
 		size := rf.getLogSize(newLog)
-		for size >= rf.maxLogSize && rf.commitIndex > rf.snapshotLastIndex {
-			// rf.insideApplyCommand(rf.commitIndex, true)
-			firstEntry := LogEntry{}
-			lastEntry := LogEntry{}
-			if len(rf.log) > 0 {
-				firstEntry = rf.log[0]
-				lastEntry = rf.log[len(rf.log)-1]
-			}
-			rf.appliedLock.Lock()
-			lastApplied := rf.lastApplied
-			rf.appliedLock.Unlock()
-			KVStoreDPrintf("from follower: before signalSnapshot:\n rf.me: %v, rf.role: %v, rf.appliedIndex: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, logsize: %v, first log entry: %v, last log entry: %v\n", rf.me, rf.role, lastApplied, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), firstEntry, lastEntry)
+		if size >= rf.maxFollowerLogSize && rf.commitIndex > rf.snapshotLastIndex {
+			// there log entries to compact, compact them
+			rf.insideApplyCommand(rf.commitIndex, true)
 			rf.signalSnapshot()
-			rf.appliedLock.Lock()
-			lastApplied = rf.lastApplied
-			rf.appliedLock.Unlock()
-			KVStoreDPrintf("from follower: after signalSnapshot:\n rf.me: %v, rf.role: %v, rf.appliedIndex: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, logsize: %v, first log entry: %v, last log entry: %v\n", rf.me, rf.role, lastApplied, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), firstEntry, lastEntry)
 			newLog = append(rf.log, entry)
 			size = rf.getLogSize(newLog)
-			time.Sleep(time.Duration(CHECKAPPLIEDTIMEOUT) * time.Millisecond)
+			rf.persistState("server %v appends new entries %v to %v",
+				rf.me, args, rf.currentAppended)
 		}
-		if size < rf.maxLogSize {
+
+		if size < rf.maxFollowerLogSize {
 			rf.log = newLog
+			rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
 			if entry.Index <= args.LeaderCommitIndex {
 				rf.commitIndex = entry.Index
-				go rf.insideApplyCommand(rf.commitIndex, true)
+				go rf.ApplyCommand(rf.commitIndex)
 			}
+			rf.currentAppended = args.Entries[j].Index
 		} else {
+			// log.Printf("Server: %v, log size %v exceeds max: %v,"+
+			// 	"log len: %v, can't append new entries, last appended: %v",
+			// 	rf.me, size, rf.maxFollowerLogSize, len(rf.log), rf.currentAppended)
 			break
 		}
 	}
-	if j > 0 {
-		rf.currentAppended = args.Entries[j-1].Index
-		rf.currentAppended = args.Entries[j-1].Index
-	}
 	reply.LastAppendedIndex = rf.currentAppended
-	rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
 }
 
 func (rf *Raft) updateCommitIndexOnReceivingAppendEntries(args *AppendEntriesArgs) {

@@ -40,8 +40,8 @@ const DebugTest = false
 const DebugSnapshot = false
 const DebugApplyCommand = false
 const DebugTemp = false
-const DebugSnapshot2 = true
-const DebugKVStore = true
+const DebugSnapshot2 = false
+const DebugKVStore = false
 
 // const colorRed = "\033[0;31m"
 

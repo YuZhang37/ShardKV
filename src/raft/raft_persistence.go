@@ -56,7 +56,7 @@ func (rf *Raft) persistState(format string, a ...interface{}) {
 }
 
 func (rf *Raft) persistStateWithSnapshot(format string, a ...interface{}) {
-
+	KVStoreDPrintf("******* Server %v persist states  for %v *******\n", rf.me, fmt.Sprintf(format, a...))
 	SnapshotDPrintf("******* Server %v persist states  for %v *******\n", rf.me, fmt.Sprintf(format, a...))
 	SnapshotDPrintf("Server %v is leader: %v\n", rf.me, rf.currentLeader == rf.me)
 	SnapshotDPrintf("Server %v currentTerm: %v\n", rf.me, rf.currentTerm)
@@ -66,6 +66,10 @@ func (rf *Raft) persistStateWithSnapshot(format string, a ...interface{}) {
 	SnapshotDPrintf("Server %v log: %v at %v\n", rf.me, rf.log, rf.me)
 	SnapshotDPrintf("Server %v snapshotLastIndex: %v\n", rf.me, rf.snapshotLastIndex)
 	SnapshotDPrintf("Server %v snapshotLastTerm: %v\n", rf.me, rf.snapshotLastTerm)
+	// rf.appliedLock.Lock()
+	// appliedIndex := rf.lastApplied
+	// rf.appliedLock.Unlock()
+	KVStoreDPrintf("Server: %v persists rf.commitIndex: %v, rf.currentTerm: %v, rf.votedFor: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v rf.log: %v\n", rf.me, rf.commitIndex, rf.currentTerm, rf.votedFor, rf.snapshotLastIndex, rf.snapshotLastTerm, rf.log)
 	data := rf.getRaftStateData()
 	if len(data) >= rf.maxRaftState {
 		log.Fatalf("size of raft state: %v exceeds maxRaftState: %v\n", len(data), rf.maxRaftState)
@@ -137,12 +141,14 @@ func (rf *Raft) readPersist() bool {
 	PersistenceDPrintf("snapshotLastTerm: %v\n", rf.snapshotLastTerm)
 	PersistenceDPrintf("log: %v\n", rf.log)
 
+	KVStoreDPrintf("Server %v read states, currentTerm: %v, votedFor: %v, snapshotLastIndex: %v, snapshotLastTerm: %v, log: %v\n", rf.me, rf.currentTerm, rf.votedFor, rf.snapshotLastIndex, rf.snapshotLastTerm, rf.log)
 	snapshot := rf.persister.ReadSnapshot()
 	if snapshot == nil || len(snapshot) < 1 {
 		PersistenceDPrintf("No snapshot to read!\n")
 		return true
 	}
 	rf.snapshot = snapshot
+	KVStoreDPrintf("server: %v in readPersist() calls rf.ApplySnapshot()\n", rf.me)
 	go rf.ApplySnapshot()
 	return true
 }

@@ -5,6 +5,7 @@ package raft
 func (rf *Raft) ApplySnapshot() {
 	rf.mu.Lock()
 	Snapshot2DPrintf("server: %v, ApplySnapshot() is called with lastIncludedIndex: %v, lastIncludedTerm: %v\n", rf.me, rf.snapshotLastIndex, rf.snapshotLastTerm)
+	KVStoreDPrintf("server: %v, ApplySnapshot() is called with lastIncludedIndex: %v, lastIncludedTerm: %v\n", rf.me, rf.snapshotLastIndex, rf.snapshotLastTerm)
 	msg := ApplyMsg{
 		SnapshotValid: true,
 		Snapshot:      rf.snapshot,
@@ -29,6 +30,7 @@ func (rf *Raft) ApplySnapshot() {
 		Snapshot2DPrintf("server: %v, lastApplied %v is updated to %v \n", rf.me, value, rf.lastApplied)
 	}
 	Snapshot2DPrintf("*****server: %v, ApplySnapshot() finished******\n", rf.me)
+	KVStoreDPrintf("*****server: %v, ApplySnapshot() finished******\n", rf.me)
 }
 
 /*
@@ -43,6 +45,7 @@ func (rf *Raft) ApplyCommand(issuedIndex int) {
 locked indicates if this function is called within rf.mu lock
 */
 func (rf *Raft) insideApplyCommand(issuedIndex int, locked bool) {
+	KVStoreDPrintf("server: %v, ApplySnapshot() is called with issuedIndex: %v, locked: %v\n", rf.me, issuedIndex, locked)
 	rf.appliedLock.Lock()
 	nextAppliedIndex := int(rf.lastApplied + 1)
 	rf.appliedLock.Unlock()
@@ -79,6 +82,7 @@ func (rf *Raft) insideApplyCommand(issuedIndex int, locked bool) {
 		}
 		rf.appliedLock.Unlock()
 	}
+	KVStoreDPrintf("server: %v, ApplySnapshot() is finished with issuedIndex: %v, locked: %v\n", rf.me, issuedIndex, locked)
 }
 
 func (rf *Raft) OrderedCommandDelivery() {
