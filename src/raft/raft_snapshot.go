@@ -205,3 +205,31 @@ func (rf *Raft) SendAndHarvestSnapshot(server int) {
 		}
 	}
 }
+
+func (rf *Raft) signalSnapshot() bool {
+	killed := false
+	received := false
+	sent := false
+	for !killed && !sent {
+		select {
+		case rf.SignalSnapshot <- 1:
+			sent = true
+		case <-time.After(time.Duration(HBTIMEOUT) * time.Millisecond):
+			if rf.killed() {
+				killed = true
+			}
+		}
+	}
+	for !killed && !received {
+		select {
+		case snapshot := <-rf.SnapshotChan:
+			rf.insideSnapshot(snapshot.LastIncludedIndex, snapshot.Data)
+			received = true
+		case <-time.After(time.Duration(HBTIMEOUT) * time.Millisecond):
+			if rf.killed() {
+				killed = true
+			}
+		}
+	}
+	return sent && received
+}

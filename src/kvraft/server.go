@@ -1,9 +1,11 @@
 package kvraft
 
 import (
+	"bytes"
 	"log"
-	"sync"
 	"sync/atomic"
+	"time"
+	"unsafe"
 
 	"6.5840/labgob"
 	"6.5840/labrpc"
@@ -34,13 +36,39 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 	defer delete(kv.clerkChans, args.ClerkId)
 	defer kv.mu.Lock()
 
-	_, _, isLeader := kv.commitRequest(args)
-	if !isLeader {
+	command := KVCommand{
+		ClerkId:   args.ClerkId,
+		SeqNum:    args.SeqNum,
+		Key:       args.Key,
+		Value:     args.Value,
+		Operation: args.Operation,
+	}
+	if unsafe.Sizeof(command) >= MAXKVCOMMANDSIZE {
+		reply.SizeExceeded = true
 		reply.LeaderId = -1
 		return
 	}
-
 	quit := false
+	for !quit {
+		index, _, isLeader := kv.rf.Start(command)
+		if !isLeader {
+			reply.LeaderId = -1
+			return
+		}
+		if index > 0 {
+			quit = true
+		} else {
+			// the server is the leader, but log exceeds maxLogSize
+			// retry later
+			time.Sleep(time.Duration(CHECKTIMEOUT) * time.Millisecond)
+			if kv.killed() {
+				reply.LeaderId = -1
+				return
+			}
+		}
+	}
+
+	quit = false
 	for !quit {
 		select {
 		case tempReply := <-clerkChan:
@@ -75,31 +103,36 @@ func (kv *KVServer) copyReply(from *RequestReply, to *RequestReply) {
 	to.Exists = from.Exists
 }
 
-func (kv *KVServer) commitRequest(args *RequestArgs) (int, int, bool) {
-	command := KVCommand{
-		ClerkId:   args.ClerkId,
-		SeqNum:    args.SeqNum,
-		Key:       args.Key,
-		Value:     args.Value,
-		Operation: args.Operation,
-	}
-	index, term, isLeader := kv.rf.Start(command)
-	return index, term, isLeader
-}
-
 // long-running thread for leader
 func (kv *KVServer) commandExecutor() {
-	for msg := range kv.applyCh {
-		if msg.SnapshotValid {
-			kv.processSnapshot(msg.SnapshotIndex, msg.SnapshotTerm, msg.Snapshot)
-		} else {
-			kv.processCommand(msg.CommandIndex, msg.CommandTerm, msg.Command)
+	quit := false
+	for !quit {
+		select {
+		case msg := <-kv.applyCh:
+			if msg.SnapshotValid {
+				kv.processSnapshot(msg.SnapshotIndex, msg.SnapshotTerm, msg.Snapshot)
+			} else {
+				kv.processCommand(msg.CommandIndex, msg.CommandTerm, msg.Command)
+			}
+		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
+			if kv.killed() {
+				quit = true
+			}
 		}
 	}
 }
 
+/*
+processSnapshot will only called in follower
+or at the start of a new leader
+for both cases, kv.clerkChans will be empty
+*/
 func (kv *KVServer) processSnapshot(snapshotIndex int, snapshotTerm int, snapshot []byte) {
-	log.Fatalf("No implementation for processSnapshot()!")
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	kv.decodeSnapshot(snapshot)
+	kv.latestAppliedIndex = snapshotIndex
+	kv.latestAppliedTerm = snapshotTerm
 }
 
 func (kv *KVServer) processCommand(commandIndex int, commandTerm int, commandFromRaft interface{}) {
@@ -118,7 +151,7 @@ func (kv *KVServer) processCommand(commandIndex int, commandTerm int, commandFro
 	}
 
 	var reply *RequestReply
-	command := KVCommand(commandFromRaft.(KVCommand))
+	command := commandFromRaft.(KVCommand)
 	if kv.cachedReplies[command.ClerkId].SeqNum >= command.SeqNum {
 		// drop the duplicated commands
 		return
@@ -207,19 +240,19 @@ implementation, which should call persister.SaveStateAndSnapshot() to atomically
 the k/v server should snapshot when Raft's saved state exceeds maxraftstate bytes, in order to allow Raft to garbage-collect its log. if maxraftstate is -1, you don't need to snapshot.
 StartKVServer() must return quickly, so it should start goroutines for any long-running work.
 */
-func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int) *KVServer {
+func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxRaftState int) *KVServer {
 	// call labgob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
 	labgob.Register(KVCommand{})
 
 	kv := new(KVServer)
-	kv.cond = sync.NewCond(&kv.mu)
 	kv.me = me
 	kv.SignalKilled = make(chan int)
 
+	maxRaftState = 8 * maxRaftState
 	kv.applyCh = make(chan raft.ApplyMsg)
-	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
-	kv.maxraftstate = maxraftstate
+	kv.rf = raft.Make(servers, me, persister, kv.applyCh, maxRaftState)
+	kv.maxRaftState = maxRaftState
 
 	kv.latestAppliedIndex = 0
 	kv.latestAppliedTerm = 0
@@ -228,8 +261,80 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.clerkChans = make(map[int64]chan RequestReply)
 
 	go kv.commandExecutor()
+	go kv.snapshotController()
 
 	return kv
+}
+
+func (kv *KVServer) snapshotController() {
+	quit := false
+	for !quit {
+		select {
+		case <-kv.rf.SignalSnapshot:
+			kv.mu.Lock()
+			data := kv.encodeSnapshot()
+			snapshot := raft.SnapshotInfo{
+				Data:              data,
+				LastIncludedIndex: kv.latestAppliedIndex,
+			}
+			kv.mu.Unlock()
+			quit1 := false
+			for !quit1 {
+				select {
+				case kv.rf.SnapshotChan <- snapshot:
+					quit1 = true
+				case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
+					if kv.killed() {
+						quit1 = true
+						quit = true
+					}
+				}
+			}
+		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
+			if kv.killed() {
+				quit = true
+			}
+		}
+	}
+}
+
+/*
+must be called with kv.mu.Lock
+*/
+func (kv *KVServer) decodeSnapshot(snapshot []byte) {
+	reader := bytes.NewBuffer(snapshot)
+	d := labgob.NewDecoder(reader)
+
+	var maxRaftState int
+	var kvStore map[string]string
+	var cachedReplies map[int64]RequestReply
+
+	if d.Decode(&maxRaftState) != nil ||
+		d.Decode(&kvStore) != nil ||
+		d.Decode(&cachedReplies) != nil {
+		log.Fatalf("decoding error!\n")
+	} else {
+		kv.maxRaftState = maxRaftState
+		kv.kvStore = kvStore
+		kv.cachedReplies = cachedReplies
+	}
+}
+
+/*
+must be called with kv.mu.Lock
+*/
+func (kv *KVServer) encodeSnapshot() []byte {
+	writer := new(bytes.Buffer)
+	e := labgob.NewEncoder(writer)
+	if e.Encode(kv.maxRaftState) != nil ||
+		// e.Encode(kv.latestAppliedIndex) != nil ||
+		// e.Encode(kv.latestAppliedTerm) != nil ||
+		e.Encode(kv.kvStore) != nil ||
+		e.Encode(kv.cachedReplies) != nil {
+		log.Fatalf("encoding error!\n")
+	}
+	data := writer.Bytes()
+	return data
 }
 
 // the tester calls Kill() when a KVServer instance won't

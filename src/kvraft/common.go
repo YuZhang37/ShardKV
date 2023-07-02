@@ -8,10 +8,12 @@ import (
 )
 
 const (
-	PUT                = "Put"
-	APPEND             = "Append"
-	GET                = "Get"
-	CHECKLEADERTIMEOUT = 100
+	PUT               = "Put"
+	APPEND            = "Append"
+	GET               = "Get"
+	CHECKTIMEOUT      = 200
+	MAXKVCOMMANDSIZE  = 500
+	LEASTMAXRAFTSTATE = 1000
 )
 
 /************************ clerk definition *********************/
@@ -34,15 +36,13 @@ type KVCommand struct {
 	Operation string
 }
 type KVServer struct {
-	mu sync.Mutex
-	// used to signal request handlers to check replies
-	cond         *sync.Cond
+	mu           sync.Mutex
 	me           int
 	dead         int32 // set by Kill()
 	SignalKilled chan int
 	rf           *raft.Raft
 	applyCh      chan raft.ApplyMsg
-	maxraftstate int // snapshot if log grows this big
+	maxRaftState int // snapshot if log grows this big
 
 	kvStore map[string]string
 	// clerk id to reply
@@ -52,6 +52,13 @@ type KVServer struct {
 	latestAppliedIndex int
 	latestAppliedTerm  int
 }
+
+/*
+	maxRaftState int
+	kvStore map[string]string
+	cachedReplies map[int64]RequestReply
+	need to be persistent
+*/
 
 /************************ end of server *********************/
 
@@ -71,7 +78,8 @@ type RequestReply struct {
 	SeqNum   int64
 	LeaderId int
 
-	Succeeded bool
+	Succeeded    bool
+	SizeExceeded bool
 	// only used for Get
 	Value string
 	// the key exists in kvStore, only used for get and append

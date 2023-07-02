@@ -1,5 +1,7 @@
 package raft
 
+import "time"
+
 /*
 follower or candidate server will execute this function for heartbeat or appendEntries,
 for heartbeat: args.IssueEntryIndex is -1 and no entries
@@ -123,24 +125,58 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 		i = indexInLiveLog + 1
 	}
 	for i < len(rf.log) && j < len(args.Entries) {
+		// find the unmatched entry or goes to the end of the server's log
 		if rf.log[i].Term != args.Entries[j].Term {
-			rf.log[i] = args.Entries[j]
+			break
 		}
 		i++
 		j++
 	}
-
 	if i < len(rf.log) {
 		// removing unmatched trailing log entries in the server
 		rf.log = rf.log[:i]
 	}
 
-	for j < len(args.Entries) {
+	for ; j < len(args.Entries); j++ {
 		// append new log entries to the server's log
-		rf.log = append(rf.log, args.Entries[j])
-		j++
+		entry := args.Entries[j]
+		newLog := append(rf.log, entry)
+		size := rf.getLogSize(newLog)
+		for size >= rf.maxLogSize && rf.commitIndex > rf.snapshotLastIndex {
+			// rf.insideApplyCommand(rf.commitIndex, true)
+			firstEntry := LogEntry{}
+			lastEntry := LogEntry{}
+			if len(rf.log) > 0 {
+				firstEntry = rf.log[0]
+				lastEntry = rf.log[len(rf.log)-1]
+			}
+			rf.appliedLock.Lock()
+			lastApplied := rf.lastApplied
+			rf.appliedLock.Unlock()
+			KVStoreDPrintf("from follower: before signalSnapshot:\n rf.me: %v, rf.role: %v, rf.appliedIndex: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, logsize: %v, first log entry: %v, last log entry: %v\n", rf.me, rf.role, lastApplied, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), firstEntry, lastEntry)
+			rf.signalSnapshot()
+			rf.appliedLock.Lock()
+			lastApplied = rf.lastApplied
+			rf.appliedLock.Unlock()
+			KVStoreDPrintf("from follower: after signalSnapshot:\n rf.me: %v, rf.role: %v, rf.appliedIndex: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, logsize: %v, first log entry: %v, last log entry: %v\n", rf.me, rf.role, lastApplied, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), firstEntry, lastEntry)
+			newLog = append(rf.log, entry)
+			size = rf.getLogSize(newLog)
+			time.Sleep(time.Duration(CHECKAPPLIEDTIMEOUT) * time.Millisecond)
+		}
+		if size < rf.maxLogSize {
+			rf.log = newLog
+			if entry.Index <= args.LeaderCommitIndex {
+				rf.commitIndex = entry.Index
+				go rf.insideApplyCommand(rf.commitIndex, true)
+			}
+		} else {
+			break
+		}
 	}
-	rf.currentAppended = args.Entries[len(args.Entries)-1].Index
+	if j > 0 {
+		rf.currentAppended = args.Entries[j-1].Index
+		rf.currentAppended = args.Entries[j-1].Index
+	}
 	reply.LastAppendedIndex = rf.currentAppended
 	rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
 }

@@ -42,7 +42,8 @@ const DebugApplyCommand = false
 const DebugTemp = false
 const DebugSnapshot2 = true
 const DebugKVStore = true
-const colorRed = "\033[0;31m"
+
+// const colorRed = "\033[0;31m"
 
 func DebugRaft(info int) {
 

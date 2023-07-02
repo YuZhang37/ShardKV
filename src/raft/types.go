@@ -75,11 +75,12 @@ const (
 )
 
 const (
-	HBTIMEOUT          int = 200
-	ELETIMEOUT         int = 1000
-	RANDOMRANGE        int = 1000
-	CHECKCOMMITTIMEOUT int = 25
-	REAPPENDTIMEOUT    int = 50
+	HBTIMEOUT           int = 200
+	ELETIMEOUT          int = 1000
+	RANDOMRANGE         int = 1000
+	CHECKCOMMITTIMEOUT  int = 25
+	REAPPENDTIMEOUT     int = 50
+	CHECKAPPLIEDTIMEOUT int = 200
 )
 
 const (

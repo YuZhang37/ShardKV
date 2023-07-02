@@ -2,6 +2,7 @@ package kvraft
 
 import (
 	"crypto/rand"
+	"log"
 	"math/big"
 	mathRand "math/rand"
 
@@ -80,6 +81,9 @@ func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
 			quit = true
 			reply = tempReply
 		} else {
+			if tempReply.SizeExceeded {
+				log.Fatalf("command is too large, max allowed command size is %v\n", MAXKVCOMMANDSIZE)
+			}
 			// the raft server or the kv server is killed or no longer the leader
 			// if tempReply.LeaderId != -1 {
 			// 	ck.leaderId = tempReply.LeaderId
@@ -98,27 +102,3 @@ func nrand() int64 {
 	x := bigx.Int64()
 	return x
 }
-
-/*
-The kvserver can reply or not:
- 1. if the kvserver doesn't reply:
-    network partition or failed server,
-    the clerk will time out
- 2. the kvserver replies:
-    a. the kvserver applies successfully
-    the clerk get the right result, continue
-    b. the kvserver is not the leader
-    the clerk will try the new leaderId if reply contains one
-    c. can't commit, stuck in infinite loop
-    retry a new kvserver? yes, seems ok
-    d. can't commit, due to losing the leader role
-    randomly pick a new kvserver and retry
- 3. the kvserver will reply but taking too long to process the request
-    will this time out? I think so
-    how to differentiate this case with 2.c? can't
-    how to differentiate this case with 1? can't
-    just retry a new server, at some point, the follower will redirect the request to this server again, if the reply is cached, it can respond instantly
-
-The function has a loop which may retry to get the result infinitely
-func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply
-*/
