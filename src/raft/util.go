@@ -41,7 +41,7 @@ const DebugSnapshot = false
 const DebugApplyCommand = false
 const DebugTemp = false
 const DebugSnapshot2 = false
-const DebugKVStore = false
+const DebugKVStore = true
 
 // const colorRed = "\033[0;31m"
 
@@ -135,4 +135,29 @@ func KVStoreDPrintf(format string, a ...interface{}) (n int, err error) {
 		log.Printf(format, a...)
 	}
 	return
+}
+
+func (rf *Raft) logRaftState(msg string) {
+	if !DebugKVStore {
+		return
+	}
+	firstEntry := LogEntry{}
+	lastEntry := LogEntry{}
+	if len(rf.log) > 0 {
+		firstEntry = rf.log[0]
+		lastEntry = rf.log[len(rf.log)-1]
+	}
+	rf.appliedLock.Lock()
+	lastApplied := rf.lastApplied
+	rf.appliedLock.Unlock()
+	log.Printf("%v:\n rf.me: %v, rf.role: %v, rf.appliedIndex: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, logsize: %v, first log entry: %v, last log entry: %v\n", msg, rf.me, rf.role, lastApplied, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), firstEntry, lastEntry)
+}
+
+func (rf *Raft) logRaftState2(isLeader bool, size int) {
+	if isLeader {
+		KVStoreDPrintf("rf.me: %v, size of new log: %v, exceeds maxLeaderLogsize: %v rf.commitIndex: %v, rf.snapshotLstIndex: %v, will snapshot: %v\n", rf.me, size, rf.maxLeaderLogSize, rf.commitIndex, rf.snapshotLastIndex, rf.commitIndex > rf.snapshotLastIndex)
+	} else {
+		KVStoreDPrintf("rf.me: %v, size of new log: %v, exceeds maxFollowerLogsize: %v rf.commitIndex: %v, rf.snapshotLstIndex: %v, will snapshot: %v\n", rf.me, size, rf.maxFollowerLogSize, rf.commitIndex, rf.snapshotLastIndex, rf.commitIndex > rf.snapshotLastIndex)
+	}
+
 }

@@ -51,12 +51,13 @@ the function needs to be called with rf.mu held
 */
 func (rf *Raft) persistState(format string, a ...interface{}) {
 
-	rf.persistStateWithSnapshot("persist()")
+	rf.persistStateWithSnapshot(format, a...)
 
 }
 
 func (rf *Raft) persistStateWithSnapshot(format string, a ...interface{}) {
 	KVStoreDPrintf("******* Server %v persist states  for %v *******\n", rf.me, fmt.Sprintf(format, a...))
+	defer KVStoreDPrintf("******* Server %v finished persist states  for %v *******\n", rf.me, fmt.Sprintf(format, a...))
 	SnapshotDPrintf("******* Server %v persist states  for %v *******\n", rf.me, fmt.Sprintf(format, a...))
 	SnapshotDPrintf("Server %v is leader: %v\n", rf.me, rf.currentLeader == rf.me)
 	SnapshotDPrintf("Server %v currentTerm: %v\n", rf.me, rf.currentTerm)
@@ -71,6 +72,14 @@ func (rf *Raft) persistStateWithSnapshot(format string, a ...interface{}) {
 	// rf.appliedLock.Unlock()
 	KVStoreDPrintf("Server: %v persists rf.commitIndex: %v, rf.currentTerm: %v, rf.votedFor: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v rf.log: %v\n", rf.me, rf.commitIndex, rf.currentTerm, rf.votedFor, rf.snapshotLastIndex, rf.snapshotLastTerm, rf.log)
 	data := rf.getRaftStateData()
+	if rf.maxRaftState != -1 && len(data) >= rf.maxRaftState {
+		log.Printf("******* Server %v persist states  for %v *******\n", rf.me, fmt.Sprintf(format, a...))
+		log.Printf("Server: %v persists rf.commitIndex: %v, rf.currentTerm: %v, rf.votedFor: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v rf.log: %v\n", rf.me, rf.commitIndex, rf.currentTerm, rf.votedFor, rf.snapshotLastIndex, rf.snapshotLastTerm, rf.log)
+		log.Printf("size of raft state: %v exceeds maxRaftState: %v\n", len(data), rf.maxRaftState)
+		rf.insideApplyCommand(rf.commitIndex, true)
+		rf.signalSnapshot()
+		data = rf.getRaftStateData()
+	}
 	if rf.maxRaftState != -1 && len(data) >= rf.maxRaftState {
 		log.Fatalf("size of raft state: %v exceeds maxRaftState: %v\n", len(data), rf.maxRaftState)
 	}

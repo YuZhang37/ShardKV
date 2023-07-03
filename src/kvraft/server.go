@@ -48,6 +48,7 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 		reply.LeaderId = -1
 		return
 	}
+	raft.KVStoreDPrintf("Got command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
 	quit := false
 	for !quit {
 		index, _, isLeader := kv.rf.Start(command)
@@ -65,6 +66,7 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 				reply.LeaderId = -1
 				return
 			}
+			raft.KVStoreDPrintf("kv.me: %v, retry index: %v, on command: %v", kv.me, index, command)
 		}
 	}
 

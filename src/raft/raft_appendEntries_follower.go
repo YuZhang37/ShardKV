@@ -5,6 +5,8 @@ follower or candidate server will execute this function for heartbeat or appendE
 for heartbeat: args.IssueEntryIndex is -1 and no entries
 */
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	KVStoreDPrintf("Server: %v, AppendEntries is called with %v\n", rf.me, args)
+	defer KVStoreDPrintf("Server: %v, AppendEntries finished with %v\n", rf.me, reply)
 	funct := 1
 	if args.IssueEntryIndex == -1 {
 		funct = 2
@@ -141,29 +143,36 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 		entry := args.Entries[j]
 		newLog := append(rf.log, entry)
 		size := rf.getLogSize(newLog)
-		if rf.maxFollowerLogSize != -1 && size >= rf.maxFollowerLogSize && rf.commitIndex > rf.snapshotLastIndex {
-			// there log entries to compact, compact them
-			rf.insideApplyCommand(rf.commitIndex, true)
-			rf.signalSnapshot()
-			newLog = append(rf.log, entry)
-			size = rf.getLogSize(newLog)
-			rf.persistState("server %v appends new entries %v to %v",
-				rf.me, args, rf.currentAppended)
+		if rf.maxFollowerLogSize != -1 && size >= rf.maxFollowerLogSize {
+			// snapshot enabled
+			rf.logRaftState("from follower: before signalSnapshot")
+			rf.logRaftState2(false, size)
+			if rf.commitIndex > rf.snapshotLastIndex {
+				// there are log entries to compact, compact them
+				rf.insideApplyCommand(rf.commitIndex, true)
+				rf.signalSnapshot()
+				newLog = append(rf.log, entry)
+				size = rf.getLogSize(newLog)
+				rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
+				rf.logRaftState("from leader: after signalSnapshot")
+			}
 		}
 
-		if rf.maxFollowerLogSize == -1 || size < rf.maxFollowerLogSize {
+		if rf.maxFollowerLogSize != -1 && size >= rf.maxFollowerLogSize {
+			// snapshot disabled and size exceeds than limit
+			// stop appending
+			break
+		} else {
+			// snapshot disabled or size is less than limit
 			rf.log = newLog
 			rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
+			// update commitIndex and currentAppended
+			// each time a new log entry is appended
 			if entry.Index <= args.LeaderCommitIndex {
 				rf.commitIndex = entry.Index
 				go rf.ApplyCommand(rf.commitIndex)
 			}
 			rf.currentAppended = args.Entries[j].Index
-		} else {
-			// log.Printf("Server: %v, log size %v exceeds max: %v,"+
-			// 	"log len: %v, can't append new entries, last appended: %v",
-			// 	rf.me, size, rf.maxFollowerLogSize, len(rf.log), rf.currentAppended)
-			break
 		}
 	}
 	reply.LastAppendedIndex = rf.currentAppended

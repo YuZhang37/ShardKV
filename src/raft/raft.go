@@ -1,5 +1,10 @@
 package raft
 
+import (
+	"log"
+	"unsafe"
+)
+
 /*
 if the command sends to the valid leader, entry will be appended to the leader's local log and returns index, term, true,
 an AppendCommand goroutine is issued to commit the command
@@ -10,17 +15,22 @@ return -1, -1, true. In this case, start won't return immediately
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-
+	index := -1
+	term := -1
+	isLeader := false
+	KVStoreDPrintf("Start() is called with %v\n", command)
+	defer KVStoreDPrintf("Start() finished %v with index: %v, term: %v, isLeader: %v\n", command, index, term, isLeader)
 	if rf.killed() || rf.role != LEADER {
 		AppendEntriesDPrintf("Command %v sends to %v, which is not a leader, the leader is %v\n", command, rf.me, rf.currentLeader)
-		return -1, -1, false
+		return index, term, isLeader
 	}
 
 	AppendEntriesDPrintf("Command %v sends to %v, which is a leader for term: %v\n", command, rf.me, rf.currentTerm)
 	AppendEntriesDPrintf("Start processing...\n")
 
+	term = rf.currentTerm
+	isLeader = true
 	//append to the leader's local log
-	index := 0
 	if len(rf.log) == 0 {
 		index = rf.snapshotLastIndex + 1
 	} else {
@@ -31,19 +41,28 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Index:   index,
 		Command: command,
 	}
+	if unsafe.Sizeof(entry) >= uintptr(MAXLOGENTRYSIZE) {
+		log.Fatalf("***************** entry: %v has size of %v which exceeds the max log entry size: %v ***********", entry, unsafe.Sizeof(entry), MAXLOGENTRYSIZE)
+	}
 	newLog := append(rf.log, entry)
 	size := rf.getLogSize(newLog)
-	if rf.maxLeaderLogSize != -1 {
+	if rf.maxLeaderLogSize != -1 && size >= rf.maxLeaderLogSize {
 		// snapshot enabled
-		if size >= rf.maxLeaderLogSize && rf.commitIndex > rf.snapshotLastIndex {
+		rf.logRaftState("from leader: before signalSnapshot")
+		rf.logRaftState2(true, size)
+		if rf.commitIndex > rf.snapshotLastIndex {
+			// there are log entries to compact
 			rf.insideApplyCommand(rf.commitIndex, true)
 			rf.signalSnapshot()
 			rf.persistState("server %v Start() snapshots for entry %v", rf.me, entry)
+			rf.logRaftState("from leader: after signalSnapshot")
 			newLog = append(rf.log, entry)
 			size = rf.getLogSize(newLog)
-			if size >= rf.maxLeaderLogSize {
-				return -1, -1, true
-			}
+		}
+		if size >= rf.maxLeaderLogSize {
+			index = -1
+			term = -1
+			return index, term, isLeader
 		}
 	}
 	rf.log = newLog
@@ -51,7 +70,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	AppendEntriesDPrintf("Command %v is appended on %v at index of %v\n", command, rf.me, len(rf.log))
 
 	go rf.reachConsensus(entry.Index)
-	return entry.Index, entry.Term, true
+	return index, term, isLeader
 }
 
 /*
