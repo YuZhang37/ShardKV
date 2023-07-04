@@ -49,28 +49,22 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 		return
 	}
 	raft.KVStoreDPrintf("Got command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
-	quit := false
-	for !quit {
-		index, _, isLeader := kv.rf.Start(command)
-		if !isLeader {
-			reply.LeaderId = -1
-			return
-		}
-		if index > 0 {
-			quit = true
-		} else {
-			// the server is the leader, but log exceeds maxLogSize
-			// retry later
-			time.Sleep(time.Duration(CHECKTIMEOUT) * time.Millisecond)
-			if kv.killed() {
-				reply.LeaderId = -1
-				return
-			}
-			raft.KVStoreDPrintf("kv.me: %v, retry index: %v, on command: %v", kv.me, index, command)
-		}
+	// quit := false
+	// for !quit {
+	index, _, isLeader := kv.rf.Start(command)
+	if !isLeader {
+		reply.LeaderId = -1
+		return
 	}
+	if index < 0 {
+		// the server is the leader, but log exceeds maxLogSize
+		// retry later
+		reply.LeaderId = -1
+		return
+	}
+	// }
 
-	quit = false
+	quit := false
 	for !quit {
 		select {
 		case tempReply := <-clerkChan:
@@ -81,15 +75,12 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 				kv.copyReply(&tempReply, reply)
 				quit = true
 			}
-		case <-kv.rf.SignalKilled:
-			quit = true
-			reply.LeaderId = -1
-		case <-kv.rf.SignalDemotion:
-			quit = true
-			reply.LeaderId = -1
-		case <-kv.SignalKilled:
-			quit = true
-			reply.LeaderId = -1
+		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
+			isValidLeader := kv.rf.IsValidLeader()
+			if kv.killed() || !isValidLeader {
+				quit = true
+				reply.LeaderId = -1
+			}
 		}
 	}
 	TempDPrintf("RequestHandler() finishes with %v\n", reply)
@@ -177,12 +168,16 @@ func (kv *KVServer) processCommand(commandIndex int, commandTerm int, commandFro
 		kv.mu.Lock()
 		clerkChan := kv.clerkChans[reply.ClerkId]
 		kv.mu.Unlock()
-		select {
-		case clerkChan <- *reply:
-		case <-kv.rf.SignalKilled:
-		case <-kv.rf.SignalDemotion:
-		case <-kv.SignalKilled:
-			TempDPrintf("reply %v sended to: %v\n", reply, reply.ClerkId)
+		quit := false
+		for !quit {
+			select {
+			case clerkChan <- *reply:
+			case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
+				isValidLeader := kv.rf.IsValidLeader()
+				if kv.killed() || !isValidLeader {
+					quit = true
+				}
+			}
 		}
 	}(reply)
 
@@ -249,7 +244,6 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 
 	kv := new(KVServer)
 	kv.me = me
-	kv.SignalKilled = make(chan int)
 
 	// command size checking will not be disabled
 	if maxRaftState != -1 {
@@ -353,7 +347,6 @@ func (kv *KVServer) encodeSnapshot() []byte {
 func (kv *KVServer) Kill() {
 	atomic.StoreInt32(&kv.dead, 1)
 	kv.rf.Kill()
-	close(kv.SignalKilled)
 }
 
 func (kv *KVServer) killed() bool {

@@ -29,7 +29,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.dead = 0
 	rf.applyCh = applyCh
 
-	rf.SignalKilled = make(chan int)
 	rf.SignalSnapshot = make(chan int)
 	rf.SnapshotChan = make(chan SnapshotInfo)
 	if len(opts) > 0 {
@@ -106,8 +105,8 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
 	term := -1
 	isLeader := false
-	KVStoreDPrintf("Start() is called with %v\n", command)
-	defer KVStoreDPrintf("Start() finished %v with index: %v, term: %v, isLeader: %v\n", command, index, term, isLeader)
+	KVStoreDPrintf("Server: %v, Start() is called with %v\n", rf.me, command)
+	defer KVStoreDPrintf("Server: %v, Start() finished %v with index: %v, term: %v, isLeader: %v\n", rf.me, command, index, term, isLeader)
 	if rf.killed() || rf.role != LEADER {
 		AppendEntriesDPrintf("Command %v sends to %v, which is not a leader, the leader is %v\n", command, rf.me, rf.currentLeader)
 		return index, term, isLeader

@@ -113,14 +113,6 @@ type Raft struct {
 	dead      int32               // set by Kill()
 	applyCh   chan ApplyMsg
 
-	SignalKilled chan int
-	/*
-	 only creates when the server is the leader, and closes on the server is no longer the leader
-	 creates when winning an election
-	 closes when the server is the leader and contacts a higher term
-	*/
-	SignalDemotion chan int
-
 	SignalSnapshot chan int
 	SnapshotChan   chan SnapshotInfo
 

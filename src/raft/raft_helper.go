@@ -30,7 +30,6 @@ should call killed() to check whether it should stop.
 */
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
-	close(rf.SignalKilled)
 	// go func() {
 	// 	time.Sleep(5 * time.Millisecond)
 	// 	close(rf.orderedDeliveryChan)
@@ -102,9 +101,6 @@ func (rf *Raft) onReceiveHigherTerm(term int) int {
 	originalTerm := rf.currentTerm
 
 	rf.currentTerm = term
-	if rf.role == LEADER {
-		close(rf.SignalDemotion)
-	}
 	rf.role = FOLLOWER
 	// set it to -1 is not a problem, since this leader did not receive vote from this server
 	rf.votedFor = -1
