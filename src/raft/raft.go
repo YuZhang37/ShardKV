@@ -167,7 +167,11 @@ func (rf *Raft) commitNoop() {
 	//append to the leader's local log
 	var index int
 	if len(rf.log) == 0 {
-		index = rf.snapshotLastIndex + 1
+		if rf.snapshotLastIndex > rf.commitIndex {
+			rf.commitIndex = rf.snapshotLastIndex
+		}
+		// the leader will update its commitIndex at least to lastsnapshot index
+		return
 	} else {
 		index = rf.log[len(rf.log)-1].Index + 1
 	}

@@ -8,12 +8,14 @@ package raft
 // test with the original before submitting.
 //
 
-import "testing"
-import "fmt"
-import "time"
-import "math/rand"
-import "sync/atomic"
-import "sync"
+import (
+	"fmt"
+	"math/rand"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
 
 // The tester generously allows solutions to complete elections in one second
 // (much more than the paper's range of timeouts).
@@ -256,7 +258,7 @@ func TestLeaderFailure2B(t *testing.T) {
 	time.Sleep(2 * RaftElectionTimeout)
 
 	// check that command 104 did not commit.
-	n, _ := cfg.nCommitted(4)
+	n := cfg.checkCommandCommitted(104)
 	if n > 0 {
 		t.Fatalf("%v committed but no majority", n)
 	}
@@ -325,7 +327,7 @@ func TestFailNoAgree2B(t *testing.T) {
 
 	time.Sleep(2 * RaftElectionTimeout)
 
-	n, _ := cfg.nCommitted(index)
+	n := cfg.checkCommandCommitted(20)
 	if n > 0 {
 		t.Fatalf("%v committed but no majority", n)
 	}
@@ -342,7 +344,7 @@ func TestFailNoAgree2B(t *testing.T) {
 	if ok2 == false {
 		t.Fatalf("leader2 rejected Start()")
 	}
-	if index2 < 2 || index2 > 3 {
+	if index2 < 2 || index2 > 4 {
 		t.Fatalf("unexpected index %v", index2)
 	}
 
@@ -1068,7 +1070,9 @@ func internalChurn(t *testing.T, unreliable bool) {
 		if vi, ok := v.(int); ok {
 			really = append(really, vi)
 		} else {
-			t.Fatalf("not an int")
+			if _, ok := v.(Noop); !ok {
+				t.Fatalf("not an int")
+			}
 		}
 	}
 

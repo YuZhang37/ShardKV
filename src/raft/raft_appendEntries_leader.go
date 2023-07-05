@@ -177,7 +177,7 @@ func (rf *Raft) harvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 				AppendEntriesDPrintf("reply from server %v sends to trailing", reply.Server)
 				if reply.Success && rf.currentTerm == reply.Term && rf.role == LEADER && !rf.killed() {
 					rf.mu.Unlock()
-					// rf.trailingReplyChan <- reply
+					rf.trailingReplyChan <- reply
 				} else {
 					rf.mu.Unlock()
 				}
