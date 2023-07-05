@@ -69,13 +69,15 @@ func (rf *Raft) isLeader() bool {
 	return ans == LEADER
 }
 
-func (rf *Raft) GetLeaderId() int {
+func (rf *Raft) GetLeaderId() (int, int, int) {
 	// ans := atomic.LoadInt32(&rf.role)
 	// return ans == LEADER
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	ans := rf.currentLeader
-	return ans
+	votedFor := rf.votedFor
+	term := rf.currentTerm
+	return ans, votedFor, term
 }
 
 func (rf *Raft) IsValidLeader() bool {

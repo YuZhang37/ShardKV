@@ -143,10 +143,10 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 		entry := args.Entries[j]
 		newLog := append(rf.log, entry)
 		size := rf.getLogSize(newLog)
-		if rf.maxFollowerLogSize != -1 && size >= rf.maxFollowerLogSize {
+		if rf.maxLogSize != -1 && size >= rf.maxLogSize {
 			// snapshot enabled
 			rf.logRaftState("from follower: before signalSnapshot")
-			rf.logRaftState2(false, size)
+			rf.logRaftState2(size)
 			if rf.commitIndex > rf.snapshotLastIndex {
 				// there are log entries to compact, compact them
 				rf.insideApplyCommand(rf.commitIndex, true)
@@ -158,7 +158,7 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 			}
 		}
 
-		if rf.maxFollowerLogSize != -1 && size >= rf.maxFollowerLogSize {
+		if rf.maxLogSize != -1 && size >= rf.maxLogSize {
 			// snapshot disabled and size exceeds than limit
 			// stop appending
 			break

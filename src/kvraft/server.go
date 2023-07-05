@@ -13,9 +13,10 @@ import (
 )
 
 func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
-	TempDPrintf("RequestHandler() is called with %v\n", args)
-	leaderId := kv.rf.GetLeaderId()
-	if leaderId != kv.me {
+	TempDPrintf("KVServer: %v, RequestHandler() is called with %v\n", kv.me, args)
+	leaderId, votedFor, term := kv.rf.GetLeaderId()
+	if votedFor != kv.me {
+		TempDPrintf("KVServer: %v is not the leader. LeaderId: %v, votedFor: %v, term: %v\n", kv.me, leaderId, votedFor, term)
 		reply.LeaderId = leaderId
 		return
 	}
@@ -25,16 +26,10 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 		// the previous reply is lost
 		kv.copyReply(&cachedReply, reply)
 		kv.mu.Unlock()
+		TempDPrintf("KVServer: %v caches reply. Reply: %v\n", kv.me, cachedReply)
 		return
 	}
-
-	clerkChan := make(chan RequestReply)
-	kv.clerkChans[args.ClerkId] = clerkChan
 	kv.mu.Unlock()
-
-	defer kv.mu.Unlock()
-	defer delete(kv.clerkChans, args.ClerkId)
-	defer kv.mu.Lock()
 
 	command := KVCommand{
 		ClerkId:   args.ClerkId,
@@ -48,23 +43,35 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 		reply.LeaderId = -1
 		return
 	}
+	kv.mu.Lock()
+	clerkChan := make(chan RequestReply)
+	kv.clerkChans[args.ClerkId] = clerkChan
+	kv.mu.Unlock()
 	raft.KVStoreDPrintf("Got command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
-	// quit := false
-	// for !quit {
-	index, _, isLeader := kv.rf.Start(command)
-	if !isLeader {
-		reply.LeaderId = -1
-		return
-	}
-	if index < 0 {
-		// the server is the leader, but log exceeds maxLogSize
-		// retry later
-		reply.LeaderId = -1
-		return
-	}
-	// }
-
 	quit := false
+	for !quit {
+		index, _, isLeader := kv.rf.Start(command)
+		if !isLeader {
+			reply.LeaderId = -1
+			return
+		}
+		if index > 0 {
+			raft.KVStoreDPrintf("Appended command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
+			quit = true
+		} else {
+			// the server is the leader, but log exceeds maxLogSize
+			// retry later
+			time.Sleep(time.Duration(CHECKTIMEOUT) * time.Millisecond)
+			if kv.killed() {
+				reply.LeaderId = -1
+				return
+			}
+			TempDPrintf("KVServer: %v the leader can't add new command: %v, LeaderId: %v\n", kv.me, command, leaderId)
+			raft.KVStoreDPrintf("kv.me: %v, retry index: %v, on command: %v", kv.me, index, command)
+		}
+	}
+
+	quit = false
 	for !quit {
 		select {
 		case tempReply := <-clerkChan:
@@ -74,6 +81,7 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 			if tempReply.SeqNum == args.SeqNum {
 				kv.copyReply(&tempReply, reply)
 				quit = true
+				TempDPrintf("RequestHandler() succeeds with %v\n", reply)
 			}
 		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
 			isValidLeader := kv.rf.IsValidLeader()
@@ -83,6 +91,9 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 			}
 		}
 	}
+	kv.mu.Lock()
+	delete(kv.clerkChans, args.ClerkId)
+	kv.mu.Unlock()
 	TempDPrintf("RequestHandler() finishes with %v\n", reply)
 }
 
@@ -129,22 +140,30 @@ func (kv *KVServer) processSnapshot(snapshotIndex int, snapshotTerm int, snapsho
 }
 
 func (kv *KVServer) processCommand(commandIndex int, commandTerm int, commandFromRaft interface{}) {
-	TempDPrintf("processCommand() is called with commandIndex: %v, commandTerm: %v, commandFromRaft: %v\n", commandIndex, commandTerm, commandFromRaft)
+	TempDPrintf("KVServer: %v, processCommand() is called with commandIndex: %v, commandTerm: %v, commandFromRaft: %v\n", kv.me, commandIndex, commandTerm, commandFromRaft)
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 	if commandIndex != kv.latestAppliedIndex+1 {
-		log.Fatalf("expecting log index: %v, got %v", kv.latestAppliedIndex+1, commandIndex)
+		log.Fatalf("KVServer: %v, expecting log index: %v, got %v", kv.me, kv.latestAppliedIndex+1, commandIndex)
 	} else {
 		kv.latestAppliedIndex++
 	}
 	if commandTerm < kv.latestAppliedTerm {
-		log.Fatalf("expecting log term: >=%v, got %v", kv.latestAppliedTerm, commandTerm)
+		log.Fatalf("KVServer: %v, expecting log term: >=%v, got %v", kv.me, kv.latestAppliedTerm, commandTerm)
 	} else {
 		kv.latestAppliedTerm = commandTerm
 	}
 
 	var reply *RequestReply
-	command := commandFromRaft.(KVCommand)
+	noop, isNoop := commandFromRaft.(raft.Noop)
+	if isNoop {
+		TempDPrintf("KVServer %v receives noop: %v\n", kv.me, noop)
+		return
+	}
+	command, isKVCommand := commandFromRaft.(KVCommand)
+	if !isKVCommand {
+		log.Fatalf("KVServer %v, expecting a KVCommand: %v\n", kv.me, command)
+	}
 	if kv.cachedReplies[command.ClerkId].SeqNum >= command.SeqNum {
 		// drop the duplicated commands
 		return
@@ -157,30 +176,31 @@ func (kv *KVServer) processCommand(commandIndex int, commandTerm int, commandFro
 	case APPEND:
 		reply = kv.processAppend(command)
 	default:
-		log.Fatalf("Got unsupported operation: %v", command.Operation)
+		log.Fatalf("KVServer: %v, Got unsupported operation: %v", kv.me, command.Operation)
 	}
 	// caching the latest reply for each client
 	// kv.cachedReplies[reply.ClerkId].SeqNum < reply.SeqNum
 	kv.cachedReplies[reply.ClerkId] = *reply
-	TempDPrintf("processCommand() finishes with reply: %v\n", reply)
-	go func(reply *RequestReply) {
-		TempDPrintf("reply %v sends to: %v\n", reply, reply.ClerkId)
-		kv.mu.Lock()
-		clerkChan := kv.clerkChans[reply.ClerkId]
-		kv.mu.Unlock()
-		quit := false
-		for !quit {
-			select {
-			case clerkChan <- *reply:
-			case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
-				isValidLeader := kv.rf.IsValidLeader()
-				if kv.killed() || !isValidLeader {
-					quit = true
-				}
+	TempDPrintf("KVServer: %v, processCommand() finishes with reply: %v\n", kv.me, reply)
+	go kv.sendReply(reply)
+}
+
+func (kv *KVServer) sendReply(reply *RequestReply) {
+	TempDPrintf("KVServer: %v, sends to: %v reply %v \n", kv.me, reply, reply.ClerkId)
+	kv.mu.Lock()
+	clerkChan := kv.clerkChans[reply.ClerkId]
+	kv.mu.Unlock()
+	quit := false
+	for !quit {
+		select {
+		case clerkChan <- *reply:
+		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
+			isValidLeader := kv.rf.IsValidLeader()
+			if kv.killed() || !isValidLeader {
+				quit = true
 			}
 		}
-	}(reply)
-
+	}
 }
 
 func (kv *KVServer) processGet(command KVCommand) *RequestReply {

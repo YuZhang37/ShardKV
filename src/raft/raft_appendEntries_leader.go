@@ -7,6 +7,7 @@ import (
 
 func (rf *Raft) reachConsensus(index int) {
 	rf.mu.Lock()
+	KVStoreDPrintf("Server: %v reachConsensus at index: %v,, log: %v, commitIndex: %v\n", rf.me, index, rf.log, rf.commitIndex)
 	if rf.killed() || rf.role != LEADER {
 		rf.mu.Unlock()
 		return
@@ -46,9 +47,14 @@ func (rf *Raft) reachConsensus(index int) {
 		ch <- 1
 	}(quitTimerChan)
 	go rf.quitBlockedHarvests(numOfPeers, harvestedServers, stopChans)
+	rf.mu.Lock()
 	if committed {
+		KVStoreDPrintf("Server: %v succeeded the reachConsensus at index: %v, commitIndex: %v, log: %v.\n", rf.me, index, rf.commitIndex, rf.log)
 		go rf.ApplyCommand(index)
+	} else {
+		KVStoreDPrintf("Server: %v failed the reachConsensus at index: %v, commitIndex: %v, log: %v.\n", rf.me, index, rf.commitIndex, rf.log)
 	}
+	rf.mu.Unlock()
 }
 
 /*
@@ -171,7 +177,7 @@ func (rf *Raft) harvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 				AppendEntriesDPrintf("reply from server %v sends to trailing", reply.Server)
 				if reply.Success && rf.currentTerm == reply.Term && rf.role == LEADER && !rf.killed() {
 					rf.mu.Unlock()
-					rf.trailingReplyChan <- reply
+					// rf.trailingReplyChan <- reply
 				} else {
 					rf.mu.Unlock()
 				}

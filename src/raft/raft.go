@@ -4,6 +4,7 @@ import (
 	"log"
 	"unsafe"
 
+	"6.5840/labgob"
 	"6.5840/labrpc"
 )
 
@@ -20,7 +21,7 @@ import (
 */
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg, opts ...interface{}) *Raft {
-
+	labgob.Register(Noop{})
 	// no lock is need at initialization
 	rf := &Raft{}
 	rf.peers = peers
@@ -38,11 +39,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	}
 
 	if rf.maxRaftState != -1 {
-		rf.maxLeaderLogSize = rf.maxRaftState - RESERVESPACE
-		rf.maxFollowerLogSize = rf.maxLeaderLogSize - MAXLOGENTRYSIZE
+		rf.maxLogSize = rf.maxRaftState - RESERVESPACE
 	} else {
-		rf.maxLeaderLogSize = -1
-		rf.maxFollowerLogSize = -1
+		rf.maxLogSize = -1
 	}
 	rf.commitIndex = 0
 	rf.lastApplied = 0
@@ -133,10 +132,10 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	newLog := append(rf.log, entry)
 	size := rf.getLogSize(newLog)
-	if rf.maxLeaderLogSize != -1 && size >= rf.maxLeaderLogSize {
+	for rf.maxLogSize != -1 && size >= rf.maxLogSize {
 		// snapshot enabled
 		rf.logRaftState("from leader: before signalSnapshot")
-		rf.logRaftState2(true, size)
+		rf.logRaftState2(size)
 		if rf.commitIndex > rf.snapshotLastIndex {
 			// there are log entries to compact
 			rf.insideApplyCommand(rf.commitIndex, true)
@@ -146,7 +145,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 			newLog = append(rf.log, entry)
 			size = rf.getLogSize(newLog)
 		}
-		if size >= rf.maxLeaderLogSize {
+		if size >= rf.maxLogSize {
 			index = -1
 			term = -1
 			return index, term, isLeader
@@ -158,6 +157,29 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 	go rf.reachConsensus(entry.Index)
 	return index, term, isLeader
+}
+
+// rf.mu is held
+func (rf *Raft) commitNoop() {
+	noop := Noop{
+		Operation: NOOP,
+	}
+	//append to the leader's local log
+	var index int
+	if len(rf.log) == 0 {
+		index = rf.snapshotLastIndex + 1
+	} else {
+		index = rf.log[len(rf.log)-1].Index + 1
+	}
+	entry := LogEntry{
+		Term:    rf.currentTerm,
+		Index:   index,
+		Command: noop,
+	}
+	rf.log = append(rf.log, entry)
+	rf.persistState("server %v commitNoop() appends entry %v", rf.me, entry)
+	go rf.reachConsensus(entry.Index)
+	KVStoreDPrintf("Server: %v commitNoop() at index: %v, entry: %v, log: %v, commitIndex: %v\n", rf.me, index, entry, rf.log, rf.commitIndex)
 }
 
 /*

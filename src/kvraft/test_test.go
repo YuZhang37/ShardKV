@@ -1,16 +1,19 @@
 package kvraft
 
-import "6.5840/porcupine"
-import "6.5840/models"
-import "testing"
-import "strconv"
-import "time"
-import "math/rand"
-import "strings"
-import "sync"
-import "sync/atomic"
-import "fmt"
-import "io/ioutil"
+import (
+	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"6.5840/models"
+	"6.5840/porcupine"
+)
 
 // The tester generously allows solutions to complete elections in one second
 // (much more than the paper's range of timeouts).
@@ -103,16 +106,19 @@ func check(cfg *config, t *testing.T, ck *Clerk, key string, value string) {
 
 // a client runs the function f and then signals it is done
 func run_client(t *testing.T, cfg *config, me int, ca chan bool, fn func(me int, ck *Clerk, t *testing.T)) {
+	TempDPrintf("Get started on run_client()\n")
 	ok := false
 	defer func() { ca <- ok }()
 	ck := cfg.makeClient(cfg.All())
 	fn(me, ck, t)
 	ok = true
 	cfg.deleteClient(ck)
+	TempDPrintf("Finished run_client()\n")
 }
 
 // spawn ncli clients and wait until they are all done
 func spawn_clients_and_wait(t *testing.T, cfg *config, ncli int, fn func(me int, ck *Clerk, t *testing.T)) {
+	TempDPrintf("Get started on spawn_clients_and_wait()\n")
 	ca := make([]chan bool, ncli)
 	for cli := 0; cli < ncli; cli++ {
 		ca[cli] = make(chan bool)
@@ -126,6 +132,7 @@ func spawn_clients_and_wait(t *testing.T, cfg *config, ncli int, fn func(me int,
 			t.Fatalf("failure")
 		}
 	}
+	TempDPrintf("Finished spawn_clients_and_wait()\n")
 }
 
 // predict effect of Append(k, val) if old value is prev.
@@ -252,7 +259,9 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 	for i := 0; i < nclients; i++ {
 		clnts[i] = make(chan int)
 	}
+	TempDPrintf("Get started on test here\n")
 	for i := 0; i < 3; i++ {
+		TempDPrintf("Get started on test iteration %v point 1\n", i)
 		// log.Printf("Iteration %v\n", i)
 		atomic.StoreInt32(&done_clients, 0)
 		atomic.StoreInt32(&done_partitioner, 0)
@@ -296,6 +305,8 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 			}
 		})
 
+		TempDPrintf("Get started on test iteration: %v point 2\n", i)
+
 		if partitions {
 			// Allow the clients to perform some operations without interruption
 			time.Sleep(1 * time.Second)
@@ -317,7 +328,7 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 			// wait for a while so that we have a new term
 			time.Sleep(electionTimeout)
 		}
-
+		TempDPrintf("Get started on test iteration: %v point 3\n", i)
 		if crash {
 			// log.Printf("shutdown servers\n")
 			for i := 0; i < nservers; i++ {
@@ -348,6 +359,7 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 				checkClntAppends(t, i, v, j)
 			}
 		}
+		TempDPrintf("Get started on test iteration: %v point 4\n", i)
 
 		if maxraftstate > 0 {
 			// Check maximum after the servers have processed all client
@@ -364,8 +376,9 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 				t.Fatalf("snapshot too large (%v), should not be used when maxraftstate = %d", ssz, maxraftstate)
 			}
 		}
+		TempDPrintf("Get started on test iteration: %v point 5\n", i)
 	}
-
+	TempDPrintf("Get finished on test iteration\n")
 	res, info := porcupine.CheckOperationsVerbose(models.KvModel, opLog.Read(), linearizabilityCheckTimeout)
 	if res == porcupine.Illegal {
 		file, err := ioutil.TempFile("", "*.html")
@@ -383,8 +396,9 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 	} else if res == porcupine.Unknown {
 		fmt.Println("info: linearizability check timed out, assuming history is ok")
 	}
-
+	TempDPrintf("Get finished on test\n")
 	cfg.end()
+	TempDPrintf("Get finished on test final point\n")
 }
 
 // Check that ops are committed fast enough, better than 1 per heartbeat interval

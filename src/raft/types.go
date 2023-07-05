@@ -88,8 +88,19 @@ const (
 		this size reserved for persistent fields
 		currentTerm and votedFor
 		snapshotLastIndex and snapshotLastTerm
+		8 * 4
+		noop:
+		LogEntry{
+			Term:
+			Index:
+			Command:
+				Noop{
+					Operation: "no-op",
+				}
+		}
+		8 * 3
 	*/
-	RESERVESPACE    int = 64 * 4
+	RESERVESPACE    int = 8 * 7 * 10
 	MAXLOGENTRYSIZE int = 750
 )
 
@@ -97,6 +108,14 @@ type LogEntry struct {
 	Term    int
 	Index   int
 	Command interface{}
+}
+
+const (
+	NOOP string = "no-op"
+)
+
+type Noop struct {
+	Operation string
 }
 
 type SnapshotInfo struct {
@@ -116,9 +135,8 @@ type Raft struct {
 	SignalSnapshot chan int
 	SnapshotChan   chan SnapshotInfo
 
-	maxRaftState       int
-	maxFollowerLogSize int
-	maxLeaderLogSize   int
+	maxRaftState int
+	maxLogSize   int
 
 	/*
 		states for all servers (log index)

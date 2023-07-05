@@ -200,6 +200,8 @@ func (rf *Raft) upgradeToLeader() {
 		go rf.HeartBeat(i)
 	}
 
+	rf.commitNoop()
+
 	ElectionDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
 	TestDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
 	KVStoreDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
@@ -226,8 +228,8 @@ func (rf *Raft) getRequestVoteArgs() RequestVoteArgs {
 
 // return granted vote count and last reply
 func (rf *Raft) sendAndReceiveVotes() (int, RequestVoteReply) {
-	args := rf.getRequestVoteArgs()
 	rf.mu.Lock()
+	args := rf.getRequestVoteArgs()
 	numOfPeers := len(rf.peers)
 	rf.mu.Unlock()
 	// receive vote replies from all sending goroutines

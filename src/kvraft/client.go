@@ -71,7 +71,9 @@ func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
 	for !quit {
 		tempReply := RequestReply{}
 		ok := ck.servers[ck.leaderId].Call("KVServer.RequestHandler", args, &tempReply)
+		TempDPrintf("sendRequest() sent to %v, got tempReply: %v for args: %v\n", ck.leaderId, tempReply, args)
 		if !ok {
+			TempDPrintf("sendRequest() sent to %v, got tempReply: %v for args: %v got disconnected\n", ck.leaderId, tempReply, args)
 			// server failed or disconnected
 			ck.leaderId = mathRand.Intn(len(ck.servers))
 			continue
@@ -84,6 +86,7 @@ func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
 			if tempReply.SizeExceeded {
 				log.Fatalf("command is too large, max allowed command size is %v\n", MAXKVCOMMANDSIZE)
 			}
+			TempDPrintf("sendRequest() sent to leader %v, got tempReply: %v for args: %v not successful\n", ck.leaderId, tempReply, args)
 			// the raft server or the kv server is killed or no longer the leader
 			// if tempReply.LeaderId != -1 {
 			// 	ck.leaderId = tempReply.LeaderId
