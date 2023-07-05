@@ -75,17 +75,52 @@ const (
 )
 
 const (
-	HBTIMEOUT          int = 200
-	ELETIMEOUT         int = 1000
-	RANDOMRANGE        int = 1000
-	CHECKCOMMITTIMEOUT int = 25
-	REAPPENDTIMEOUT    int = 50
+	HBTIMEOUT           int = 200
+	ELETIMEOUT          int = 1000
+	RANDOMRANGE         int = 1000
+	CHECKCOMMITTIMEOUT  int = 25
+	REAPPENDTIMEOUT     int = 50
+	CHECKAPPLIEDTIMEOUT int = 200
+)
+
+const (
+	/*
+		this size reserved for persistent fields
+		currentTerm and votedFor
+		snapshotLastIndex and snapshotLastTerm
+		8 * 4
+		noop:
+		LogEntry{
+			Term:
+			Index:
+			Command:
+				Noop{
+					Operation: "no-op",
+				}
+		}
+		8 * 3
+	*/
+	RESERVESPACE    int = 8 * 7 * 10
+	MAXLOGENTRYSIZE int = 750
 )
 
 type LogEntry struct {
 	Term    int
 	Index   int
 	Command interface{}
+}
+
+const (
+	NOOP string = "no-op"
+)
+
+type Noop struct {
+	Operation string
+}
+
+type SnapshotInfo struct {
+	Data              []byte
+	LastIncludedIndex int
 }
 
 // A Go object implementing a single Raft peer.
@@ -96,6 +131,12 @@ type Raft struct {
 	me        int                 // this peer's index into peers[]
 	dead      int32               // set by Kill()
 	applyCh   chan ApplyMsg
+
+	SignalSnapshot chan int
+	SnapshotChan   chan SnapshotInfo
+
+	maxRaftState int
+	maxLogSize   int
 
 	/*
 		states for all servers (log index)

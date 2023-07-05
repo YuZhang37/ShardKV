@@ -513,6 +513,24 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 	return count, cmd
 }
 
+// how many servers think a log entry is committed?
+func (cfg *config) checkCommandCommitted(command interface{}) int {
+	count := 0
+	for i := 0; i < len(cfg.rafts); i++ {
+		if cfg.applyErr[i] != "" {
+			cfg.t.Fatal(cfg.applyErr[i])
+		}
+		cfg.mu.Lock()
+		for _, value := range cfg.logs[i] {
+			if value == command {
+				count++
+			}
+		}
+		cfg.mu.Unlock()
+	}
+	return count
+}
+
 // wait for at least n servers to commit.
 // but don't wait forever.
 func (cfg *config) wait(index int, n int, startTerm int) interface{} {

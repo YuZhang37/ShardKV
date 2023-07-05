@@ -51,12 +51,13 @@ the function needs to be called with rf.mu held
 */
 func (rf *Raft) persistState(format string, a ...interface{}) {
 
-	rf.persistStateWithSnapshot("persist()")
+	rf.persistStateWithSnapshot(format, a...)
 
 }
 
 func (rf *Raft) persistStateWithSnapshot(format string, a ...interface{}) {
-
+	KVStoreDPrintf("******* Server %v persist states  for %v *******\n", rf.me, fmt.Sprintf(format, a...))
+	defer KVStoreDPrintf("******* Server %v finished persist states  for %v *******\n", rf.me, fmt.Sprintf(format, a...))
 	SnapshotDPrintf("******* Server %v persist states  for %v *******\n", rf.me, fmt.Sprintf(format, a...))
 	SnapshotDPrintf("Server %v is leader: %v\n", rf.me, rf.currentLeader == rf.me)
 	SnapshotDPrintf("Server %v currentTerm: %v\n", rf.me, rf.currentTerm)
@@ -66,18 +67,49 @@ func (rf *Raft) persistStateWithSnapshot(format string, a ...interface{}) {
 	SnapshotDPrintf("Server %v log: %v at %v\n", rf.me, rf.log, rf.me)
 	SnapshotDPrintf("Server %v snapshotLastIndex: %v\n", rf.me, rf.snapshotLastIndex)
 	SnapshotDPrintf("Server %v snapshotLastTerm: %v\n", rf.me, rf.snapshotLastTerm)
+	// rf.appliedLock.Lock()
+	// appliedIndex := rf.lastApplied
+	// rf.appliedLock.Unlock()
+	KVStoreDPrintf("Server: %v persists rf.commitIndex: %v, rf.currentTerm: %v, rf.votedFor: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v rf.log: %v\n", rf.me, rf.commitIndex, rf.currentTerm, rf.votedFor, rf.snapshotLastIndex, rf.snapshotLastTerm, rf.log)
+	data := rf.getRaftStateData()
+	if rf.maxRaftState != -1 && len(data) >= rf.maxRaftState {
+		log.Printf("******* Server %v persist states  for %v *******\n", rf.me, fmt.Sprintf(format, a...))
+		log.Printf("Server: %v persists rf.commitIndex: %v, rf.currentTerm: %v, rf.votedFor: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v rf.log: %v\n", rf.me, rf.commitIndex, rf.currentTerm, rf.votedFor, rf.snapshotLastIndex, rf.snapshotLastTerm, rf.log)
+		log.Printf("size of raft state: %v exceeds maxRaftState: %v\n", len(data), rf.maxRaftState)
+		rf.insideApplyCommand(rf.commitIndex, true)
+		rf.signalSnapshot()
+		data = rf.getRaftStateData()
+	}
+	if rf.maxRaftState != -1 && len(data) >= rf.maxRaftState {
+		log.Fatalf("size of raft state: %v exceeds maxRaftState: %v\n", len(data), rf.maxRaftState)
+	}
+	rf.persister.Save(data, rf.snapshot)
+}
 
+func (rf *Raft) getRaftStateData() []byte {
 	writer := new(bytes.Buffer)
 	e := labgob.NewEncoder(writer)
-	e.Encode(rf.currentTerm)
-	e.Encode(rf.votedFor)
-	e.Encode(rf.snapshotLastIndex)
-	e.Encode(rf.snapshotLastTerm)
 	// interface type when passing value, no need to register the type
 	// can we encode empty slice ? needs to test
-	e.Encode(rf.log)
+	if e.Encode(rf.currentTerm) != nil ||
+		e.Encode(rf.votedFor) != nil ||
+		e.Encode(rf.snapshotLastIndex) != nil ||
+		e.Encode(rf.snapshotLastTerm) != nil ||
+		e.Encode(rf.log) != nil {
+		log.Fatalf("encoding error!\n")
+	}
 	data := writer.Bytes()
-	rf.persister.Save(data, rf.snapshot)
+	return data
+}
+
+func (rf *Raft) getLogSize(logEntries []LogEntry) int {
+	writer := new(bytes.Buffer)
+	e := labgob.NewEncoder(writer)
+	if e.Encode(logEntries) != nil {
+		log.Fatalf("encoding error!\n")
+	}
+	data := writer.Bytes()
+	return len(data)
 }
 
 /*
@@ -108,6 +140,9 @@ func (rf *Raft) readPersist() bool {
 		rf.snapshotLastIndex = snapshotLastIndex
 		rf.snapshotLastTerm = snapshotLastTerm
 		rf.log = logEntries
+		if rf.commitIndex < snapshotLastIndex {
+			rf.commitIndex = snapshotLastIndex
+		}
 	}
 	PersistenceDPrintf("currentTerm: %v\n", rf.currentTerm)
 	PersistenceDPrintf("votedFor: %v\n", rf.votedFor)
@@ -115,12 +150,14 @@ func (rf *Raft) readPersist() bool {
 	PersistenceDPrintf("snapshotLastTerm: %v\n", rf.snapshotLastTerm)
 	PersistenceDPrintf("log: %v\n", rf.log)
 
+	KVStoreDPrintf("Server %v read states, currentTerm: %v, votedFor: %v, snapshotLastIndex: %v, snapshotLastTerm: %v, log: %v\n", rf.me, rf.currentTerm, rf.votedFor, rf.snapshotLastIndex, rf.snapshotLastTerm, rf.log)
 	snapshot := rf.persister.ReadSnapshot()
 	if snapshot == nil || len(snapshot) < 1 {
 		PersistenceDPrintf("No snapshot to read!\n")
 		return true
 	}
 	rf.snapshot = snapshot
+	KVStoreDPrintf("server: %v in readPersist() calls rf.ApplySnapshot()\n", rf.me)
 	go rf.ApplySnapshot()
 	return true
 }

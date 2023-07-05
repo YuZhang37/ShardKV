@@ -136,12 +136,12 @@ func (rf *Raft) Election() {
 		rf.mu.Unlock()
 		return
 	}
-	rf.UpgradeToCandidate()
+	rf.upgradeToCandidate()
 	rf.persistState("server %v leader election", rf.me)
 	// not necessary to persist here, if the server crashes, it can start over the election with previous term just like crash before starting election
 	rf.mu.Unlock()
 
-	countVotes, reply := rf.SendAndReceiveVotes()
+	countVotes, reply := rf.sendAndReceiveVotes()
 
 	rf.mu.Lock()
 	/*
@@ -150,7 +150,7 @@ func (rf *Raft) Election() {
 		and the current role is follower
 	*/
 	if rf.role == CANDIDATE && countVotes >= len(rf.peers)/2+1 {
-		rf.UpgradeToLeader()
+		rf.upgradeToLeader()
 	} else {
 		if reply.Term > rf.currentTerm {
 			originalTerm := rf.onReceiveHigherTerm(reply.Term)
@@ -162,7 +162,7 @@ func (rf *Raft) Election() {
 	rf.mu.Unlock()
 }
 
-func (rf *Raft) UpgradeToCandidate() {
+func (rf *Raft) upgradeToCandidate() {
 	// change all relevant states to be candidate
 	rf.currentTerm++
 	rf.votedFor = rf.me
@@ -172,7 +172,7 @@ func (rf *Raft) UpgradeToCandidate() {
 	rf.msgReceived = false
 }
 
-func (rf *Raft) UpgradeToLeader() {
+func (rf *Raft) upgradeToLeader() {
 	rf.role = LEADER
 	rf.currentLeader = rf.me
 	for i := 0; i < len(rf.peers); i++ {
@@ -200,11 +200,14 @@ func (rf *Raft) UpgradeToLeader() {
 		go rf.HeartBeat(i)
 	}
 
+	rf.commitNoop()
+
 	ElectionDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
 	TestDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
+	KVStoreDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
 }
 
-func (rf *Raft) GetRequestVoteArgs() RequestVoteArgs {
+func (rf *Raft) getRequestVoteArgs() RequestVoteArgs {
 	lastTerm := 0
 	lastIndex := 0
 	if len(rf.log) > 0 {
@@ -224,9 +227,9 @@ func (rf *Raft) GetRequestVoteArgs() RequestVoteArgs {
 }
 
 // return granted vote count and last reply
-func (rf *Raft) SendAndReceiveVotes() (int, RequestVoteReply) {
-	args := rf.GetRequestVoteArgs()
+func (rf *Raft) sendAndReceiveVotes() (int, RequestVoteReply) {
 	rf.mu.Lock()
+	args := rf.getRequestVoteArgs()
 	numOfPeers := len(rf.peers)
 	rf.mu.Unlock()
 	// receive vote replies from all sending goroutines

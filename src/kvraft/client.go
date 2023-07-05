@@ -1,13 +1,102 @@
 package kvraft
 
-import "6.5840/labrpc"
-import "crypto/rand"
-import "math/big"
+import (
+	"crypto/rand"
+	"log"
+	"math/big"
+	mathRand "math/rand"
 
+	"6.5840/labrpc"
+)
 
-type Clerk struct {
-	servers []*labrpc.ClientEnd
-	// You will have to modify this struct.
+func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
+	ck := new(Clerk)
+	ck.servers = servers
+	ck.clerkId = nrand()
+	ck.seqNum = 1
+	ck.leaderId = mathRand.Intn(len(ck.servers))
+	return ck
+}
+
+/*
+fetch the current value for a key.
+returns "" if the key does not exist.
+keeps trying forever in the face of all other errors.
+*/
+func (ck *Clerk) Get(key string) string {
+	ck.seqNum++
+	args := RequestArgs{
+		ClerkId: ck.clerkId,
+		SeqNum:  ck.seqNum,
+
+		Operation: GET,
+		Key:       key,
+	}
+	reply := ck.sendRequest(&args)
+	return reply.Value
+}
+
+func (ck *Clerk) Put(key string, value string) {
+	ck.seqNum++
+	args := RequestArgs{
+		ClerkId: ck.clerkId,
+		SeqNum:  ck.seqNum,
+
+		Operation: PUT,
+		Key:       key,
+		Value:     value,
+	}
+	ck.sendRequest(&args)
+}
+func (ck *Clerk) Append(key string, value string) {
+	ck.seqNum++
+	args := RequestArgs{
+		ClerkId: ck.clerkId,
+		SeqNum:  ck.seqNum,
+
+		Operation: APPEND,
+		Key:       key,
+		Value:     value,
+	}
+	ck.sendRequest(&args)
+}
+
+/*
+This function sends request to kvServer, and handles retries
+*/
+func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
+	TempDPrintf("sendRequest() is called with %v\n", args)
+	var reply RequestReply
+	quit := false
+	for !quit {
+		tempReply := RequestReply{}
+		ok := ck.servers[ck.leaderId].Call("KVServer.RequestHandler", args, &tempReply)
+		TempDPrintf("sendRequest() sent to %v, got tempReply: %v for args: %v\n", ck.leaderId, tempReply, args)
+		if !ok {
+			TempDPrintf("sendRequest() sent to %v, got tempReply: %v for args: %v got disconnected\n", ck.leaderId, tempReply, args)
+			// server failed or disconnected
+			ck.leaderId = mathRand.Intn(len(ck.servers))
+			continue
+		}
+		if tempReply.Succeeded {
+			// the raft server commits and kvServer applies
+			quit = true
+			reply = tempReply
+		} else {
+			if tempReply.SizeExceeded {
+				log.Fatalf("command is too large, max allowed command size is %v\n", MAXKVCOMMANDSIZE)
+			}
+			TempDPrintf("sendRequest() sent to leader %v, got tempReply: %v for args: %v not successful\n", ck.leaderId, tempReply, args)
+			// the raft server or the kv server is killed or no longer the leader
+			// if tempReply.LeaderId != -1 {
+			// 	ck.leaderId = tempReply.LeaderId
+			// } else {
+			ck.leaderId = mathRand.Intn(len(ck.servers))
+			// }
+		}
+	}
+	TempDPrintf("sendRequest() finishes with %v\n", reply)
+	return &reply
 }
 
 func nrand() int64 {
@@ -15,46 +104,4 @@ func nrand() int64 {
 	bigx, _ := rand.Int(rand.Reader, max)
 	x := bigx.Int64()
 	return x
-}
-
-func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
-	ck := new(Clerk)
-	ck.servers = servers
-	// You'll have to add code here.
-	return ck
-}
-
-// fetch the current value for a key.
-// returns "" if the key does not exist.
-// keeps trying forever in the face of all other errors.
-//
-// you can send an RPC with code like this:
-// ok := ck.servers[i].Call("KVServer.Get", &args, &reply)
-//
-// the types of args and reply (including whether they are pointers)
-// must match the declared types of the RPC handler function's
-// arguments. and reply must be passed as a pointer.
-func (ck *Clerk) Get(key string) string {
-
-	// You will have to modify this function.
-	return ""
-}
-
-// shared by Put and Append.
-//
-// you can send an RPC with code like this:
-// ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
-//
-// the types of args and reply (including whether they are pointers)
-// must match the declared types of the RPC handler function's
-// arguments. and reply must be passed as a pointer.
-func (ck *Clerk) PutAppend(key string, value string, op string) {
-	// You will have to modify this function.
-}
-
-func (ck *Clerk) Put(key string, value string) {
-	ck.PutAppend(key, value, "Put")
-}
-func (ck *Clerk) Append(key string, value string) {
-	ck.PutAppend(key, value, "Append")
 }
