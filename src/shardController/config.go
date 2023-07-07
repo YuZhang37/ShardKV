@@ -1,4 +1,4 @@
-package shardctrler
+package shardController
 
 import "6.5840/labrpc"
 import "6.5840/raft"

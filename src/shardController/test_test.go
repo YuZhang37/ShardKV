@@ -1,4 +1,4 @@
-package shardctrler
+package shardController
 
 import (
 	"fmt"
