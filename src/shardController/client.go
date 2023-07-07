@@ -19,58 +19,15 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 }
 
 /*
-fetch the current value for a key.
-returns "" if the key does not exist.
-keeps trying forever in the face of all other errors.
-*/
-func (ck *Clerk) Get(key string) string {
-	ck.seqNum++
-	args := RequestArgs{
-		ClerkId: ck.clerkId,
-		SeqNum:  ck.seqNum,
-
-		Operation: GET,
-		Key:       key,
-	}
-	reply := ck.sendRequest(&args)
-	return reply.Value
-}
-
-func (ck *Clerk) Put(key string, value string) {
-	ck.seqNum++
-	args := RequestArgs{
-		ClerkId: ck.clerkId,
-		SeqNum:  ck.seqNum,
-
-		Operation: PUT,
-		Key:       key,
-		Value:     value,
-	}
-	ck.sendRequest(&args)
-}
-func (ck *Clerk) Append(key string, value string) {
-	ck.seqNum++
-	args := RequestArgs{
-		ClerkId: ck.clerkId,
-		SeqNum:  ck.seqNum,
-
-		Operation: APPEND,
-		Key:       key,
-		Value:     value,
-	}
-	ck.sendRequest(&args)
-}
-
-/*
 This function sends request to kvServer, and handles retries
 */
-func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
+func (ck *Clerk) sendRequest(args *ControllerRequestArgs) *ControllerReply {
 	TempDPrintf("sendRequest() is called with %v\n", args)
-	var reply RequestReply
+	var reply ControllerReply
 	quit := false
 	for !quit {
-		tempReply := RequestReply{}
-		ok := ck.servers[ck.leaderId].Call("KVServer.RequestHandler", args, &tempReply)
+		tempReply := ControllerReply{}
+		ok := ck.servers[ck.leaderId].Call("ShardController.RequestHandler", args, &tempReply)
 		TempDPrintf("sendRequest() sent to %v, got tempReply: %v for args: %v\n", ck.leaderId, tempReply, args)
 		if !ok {
 			TempDPrintf("sendRequest() sent to %v, got tempReply: %v for args: %v got disconnected\n", ck.leaderId, tempReply, args)
@@ -104,4 +61,54 @@ func nrand() int64 {
 	bigx, _ := rand.Int(rand.Reader, max)
 	x := bigx.Int64()
 	return x
+}
+
+func (ck *Clerk) Query(num int) Config {
+	ck.seqNum++
+	args := ControllerRequestArgs{
+		ClerkId: ck.clerkId,
+		SeqNum:  ck.seqNum,
+
+		Operation: QUERY,
+		QueryNum:  num,
+	}
+	reply := ck.sendRequest(&args)
+	return reply.Config
+}
+
+func (ck *Clerk) Join(servers map[int][]string) {
+	ck.seqNum++
+	args := ControllerRequestArgs{
+		ClerkId: ck.clerkId,
+		SeqNum:  ck.seqNum,
+
+		Operation:     JOIN,
+		JoinedServers: servers,
+	}
+	ck.sendRequest(&args)
+}
+
+func (ck *Clerk) Leave(gids []int) {
+	ck.seqNum++
+	args := ControllerRequestArgs{
+		ClerkId: ck.clerkId,
+		SeqNum:  ck.seqNum,
+
+		Operation: LEAVE,
+		LeaveGIDs: gids,
+	}
+	ck.sendRequest(&args)
+}
+
+func (ck *Clerk) Move(shard int, gid int) {
+	ck.seqNum++
+	args := ControllerRequestArgs{
+		ClerkId: ck.clerkId,
+		SeqNum:  ck.seqNum,
+
+		Operation:  MOVE,
+		MovedShard: shard,
+		MovedGID:   gid,
+	}
+	ck.sendRequest(&args)
 }

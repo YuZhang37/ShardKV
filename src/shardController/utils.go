@@ -4,7 +4,7 @@ import (
 	"log"
 )
 
-const TempDebug = false
+const TempDebug = true
 const Temp2Debug = false
 
 func TempDPrintf(format string, a ...interface{}) (n int, err error) {

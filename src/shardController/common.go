@@ -14,80 +14,110 @@ const (
 )
 
 const (
-	PUT    = "Put"
-	APPEND = "Append"
-	GET    = "Get"
+	JOIN  = "Join"
+	LEAVE = "Leave"
+	MOVE  = "Move"
+	QUERY = "Query"
 )
 
-/************************ clerk definition *********************/
+/************** definition for controller client ****************/
 type Clerk struct {
-	// mu       sync.Mutex
 	servers  []*labrpc.ClientEnd
 	clerkId  int64
 	seqNum   int64
 	leaderId int
 }
 
-/************************ end of clerk *********************/
+/*********** end of definition for controller client *************/
 
-/************************ server definition *********************/
-type KVServer struct {
-	mu           sync.Mutex
-	me           int
-	dead         int32 // set by Kill()
-	rf           *raft.Raft
-	applyCh      chan raft.ApplyMsg
-	maxRaftState int // snapshot if log grows this big
+/************** definition for controller server *************/
 
-	kvStore map[string]string
-	// clerk id to reply
-	cachedReplies map[int64]RequestReply
-	clerkChans    map[int64]chan RequestReply
+// The number of shards.
+const NShards = 10
+
+// A configuration -- an assignment of shards to groups.
+// Please don't change this.
+type Config struct {
+	Num    int              // config number
+	Shards [NShards]int     // shard -> gid
+	Groups map[int][]string // gid -> servers[]
+}
+type ShardController struct {
+	mu      sync.Mutex
+	dead    int32 // set by Kill()
+	me      int
+	rf      *raft.Raft
+	applyCh chan raft.ApplyMsg
+	// snapshot if log grows this big
+	maxRaftState int // persist
+
+	// replies for all operations
+	cachedReplies map[int64]ControllerReply // persist
+	clerkChans    map[int64]chan ControllerReply
 
 	latestAppliedIndex int
 	latestAppliedTerm  int
+
+	// 0 is the initial config
+	// indexed by config num
+	configs []Config // persist
 }
 
-// for raft command
-type KVCommand struct {
-	ClerkId   int64
-	SeqNum    int64
-	Key       string
-	Value     string
-	Operation string
+type ControllerCommand struct {
+	ClerkId       int64
+	SeqNum        int64
+	Operation     string
+	JoinedServers map[int][]string
+	LeaveGIDs     []int
+	MovedShard    int
+	MovedGID      int
+	QueryNum      int
 }
 
-/*
-	maxRaftState int
-	kvStore map[string]string
-	cachedReplies map[int64]RequestReply
-	need to be persistent
-*/
+/*********** end of definition for controller server *************/
 
-/************************ end of server *********************/
-
-/*************** clerk-kvServer RPC definition ***************/
-type RequestArgs struct {
+/*************** clerk-controller RPC definition ***************/
+type ControllerRequestArgs struct {
 	ClerkId int64
 	SeqNum  int64
 
 	Operation string
-	Key       string
-	// only used for Put and Append
-	Value string
+	// Join
+	JoinedServers map[int][]string
+	// Leave
+	LeaveGIDs []int
+	// Move
+	MovedShard int
+	MovedGID   int
+	// Query
+	QueryNum int
 }
 
-type RequestReply struct {
+type ControllerReply struct {
 	ClerkId  int64
 	SeqNum   int64
 	LeaderId int
 
 	Succeeded    bool
 	SizeExceeded bool
-	// only used for Get
-	Value string
-	// the key exists in kvStore, only used for get and append
-	Exists bool
+	Config       Config
 }
 
-/************** end of clerk-kvServer RPC definition **************/
+/************ end of clerk-controller RPC definition *************/
+
+//
+// Shard controler: assigns shards to replication groups.
+//
+// RPC interface:
+// Join(servers) -- add a set of groups (gid -> server-list mapping).
+// Leave(gids) -- delete a set of groups.
+// Move(shard, gid) -- hand off one shard from current owner to gid.
+// Query(num) -> fetch Config # num, or latest config if num==-1.
+//
+// A Config (configuration) describes a set of replica groups, and the
+// replica group responsible for each shard. Configs are numbered. Config
+// #0 is the initial configuration, with no groups and all shards
+// assigned to group 0 (the invalid group).
+//
+// You will need to add fields to the RPC argument structs.
+//

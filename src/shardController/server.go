@@ -12,64 +12,67 @@ import (
 	"6.5840/raft"
 )
 
-func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
-	TempDPrintf("KVServer: %v, RequestHandler() is called with %v\n", kv.me, args)
-	if !kv.checkLeader(args, reply) {
+func (sc *ShardController) RequestHandler(args *ControllerRequestArgs, reply *ControllerReply) {
+	TempDPrintf("ShardController: %v, RequestHandler() is called with %v\n", sc.me, args)
+	if !sc.checkLeader(args, reply) {
 		return
 	}
-	if kv.checkCachedReply(args, reply) {
+	if sc.checkCachedReply(args, reply) {
 		return
 	}
-	command := kv.getKVCommand(args, reply)
+	command := sc.getControllerCommand(args, reply)
 	if command == nil {
 		return
 	}
-	kv.mu.Lock()
-	clerkChan := make(chan RequestReply)
-	kv.clerkChans[args.ClerkId] = clerkChan
-	kv.mu.Unlock()
-	raft.KVStoreDPrintf("Got command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
-	if !kv.startCommit(command, reply) {
+	sc.mu.Lock()
+	clerkChan := make(chan ControllerReply)
+	sc.clerkChans[args.ClerkId] = clerkChan
+	sc.mu.Unlock()
+	TempDPrintf("Got command: ClerkId=%v, SeqNum=%v Operation=%v, Command: %v\n", command.ClerkId, command.SeqNum, command.Operation, command)
+	if !sc.startCommit(command, reply) {
 		return
 	}
-	kv.waitReply(clerkChan, args, reply)
-	kv.mu.Lock()
-	delete(kv.clerkChans, args.ClerkId)
-	kv.mu.Unlock()
+	sc.waitReply(clerkChan, args, reply)
+	sc.mu.Lock()
+	delete(sc.clerkChans, args.ClerkId)
+	sc.mu.Unlock()
 	TempDPrintf("RequestHandler() finishes with %v\n", reply)
 }
 
-func (kv *KVServer) checkLeader(args *RequestArgs, reply *RequestReply) bool {
-	leaderId, votedFor, term := kv.rf.GetLeaderId()
-	if votedFor != kv.me {
-		TempDPrintf("KVServer: %v is not the leader. LeaderId: %v, votedFor: %v, term: %v\n", kv.me, leaderId, votedFor, term)
+func (sc *ShardController) checkLeader(args *ControllerRequestArgs, reply *ControllerReply) bool {
+	leaderId, votedFor, term := sc.rf.GetLeaderId()
+	if votedFor != sc.me {
+		TempDPrintf("ShardController: %v is not the leader. LeaderId: %v, votedFor: %v, term: %v\n", sc.me, leaderId, votedFor, term)
 		reply.LeaderId = votedFor
 		return false
 	}
 	return true
 }
 
-func (kv *KVServer) checkCachedReply(args *RequestArgs, reply *RequestReply) bool {
-	kv.mu.Lock()
-	cachedReply := kv.cachedReplies[args.ClerkId]
+func (sc *ShardController) checkCachedReply(args *ControllerRequestArgs, reply *ControllerReply) bool {
+	sc.mu.Lock()
+	cachedReply := sc.cachedReplies[args.ClerkId]
 	if args.SeqNum == cachedReply.SeqNum {
 		// the previous reply is lost
-		kv.copyReply(&cachedReply, reply)
-		kv.mu.Unlock()
-		TempDPrintf("KVServer: %v caches reply. Reply: %v\n", kv.me, cachedReply)
+		sc.copyReply(&cachedReply, reply)
+		sc.mu.Unlock()
+		TempDPrintf("ShardController: %v caches reply. Reply: %v\n", sc.me, cachedReply)
 		return true
 	}
-	kv.mu.Unlock()
+	sc.mu.Unlock()
 	return false
 }
 
-func (kv *KVServer) getKVCommand(args *RequestArgs, reply *RequestReply) *KVCommand {
-	command := &KVCommand{
-		ClerkId:   args.ClerkId,
-		SeqNum:    args.SeqNum,
-		Key:       args.Key,
-		Value:     args.Value,
-		Operation: args.Operation,
+func (sc *ShardController) getControllerCommand(args *ControllerRequestArgs, reply *ControllerReply) *ControllerCommand {
+	command := &ControllerCommand{
+		ClerkId:       args.ClerkId,
+		SeqNum:        args.SeqNum,
+		Operation:     args.Operation,
+		JoinedServers: args.JoinedServers,
+		LeaveGIDs:     args.LeaveGIDs,
+		MovedShard:    args.MovedShard,
+		MovedGID:      args.MovedGID,
+		QueryNum:      args.QueryNum,
 	}
 	if unsafe.Sizeof(command) >= MAXKVCOMMANDSIZE {
 		reply.SizeExceeded = true
@@ -79,33 +82,33 @@ func (kv *KVServer) getKVCommand(args *RequestArgs, reply *RequestReply) *KVComm
 	return command
 }
 
-func (kv *KVServer) startCommit(command *KVCommand, reply *RequestReply) bool {
+func (sc *ShardController) startCommit(command *ControllerCommand, reply *ControllerReply) bool {
 	quit := false
 	for !quit {
-		index, _, isLeader := kv.rf.Start(*command)
+		index, _, isLeader := sc.rf.Start(*command)
 		if !isLeader {
 			reply.LeaderId = -1
 			return false
 		}
 		if index > 0 {
-			raft.KVStoreDPrintf("Appended command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
+			TempDPrintf("Appended command: ClerkId=%v, SeqNum=%v Operation=%v, Command: %v\n", command.ClerkId, command.SeqNum, command.Operation, command)
 			quit = true
 		} else {
 			// the server is the leader, but log exceeds maxLogSize
 			// retry later
 			time.Sleep(time.Duration(CHECKTIMEOUT) * time.Millisecond)
-			if kv.killed() {
+			if sc.killed() {
 				reply.LeaderId = -1
 				return false
 			}
-			TempDPrintf("KVServer: %v the leader can't add new command: %v, LeaderId: %v\n", kv.me, command, kv.me)
-			raft.KVStoreDPrintf("kv.me: %v, retry index: %v, on command: %v", kv.me, index, command)
+			TempDPrintf("ShardController: %v the leader can't add new command: %v, LeaderId: %v\n", sc.me, command, sc.me)
+			TempDPrintf("sc.me: %v, retry index: %v, on command: %v", sc.me, index, command)
 		}
 	}
 	return true
 }
 
-func (kv *KVServer) waitReply(clerkChan chan RequestReply, args *RequestArgs, reply *RequestReply) {
+func (sc *ShardController) waitReply(clerkChan chan ControllerReply, args *ControllerRequestArgs, reply *ControllerReply) {
 	quit := false
 	for !quit {
 		select {
@@ -114,13 +117,13 @@ func (kv *KVServer) waitReply(clerkChan chan RequestReply, args *RequestArgs, re
 			// it's possible when previous request is committed and server crashes before reply
 			// the new leader just applies this command
 			if tempReply.SeqNum == args.SeqNum {
-				kv.copyReply(&tempReply, reply)
+				sc.copyReply(&tempReply, reply)
 				quit = true
 				TempDPrintf("RequestHandler() succeeds with %v\n", reply)
 			}
 		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
-			isValidLeader := kv.rf.IsValidLeader()
-			if kv.killed() || !isValidLeader {
+			isValidLeader := sc.rf.IsValidLeader()
+			if sc.killed() || !isValidLeader {
 				quit = true
 				reply.LeaderId = -1
 			}
@@ -128,30 +131,29 @@ func (kv *KVServer) waitReply(clerkChan chan RequestReply, args *RequestArgs, re
 	}
 }
 
-func (kv *KVServer) copyReply(from *RequestReply, to *RequestReply) {
+func (sc *ShardController) copyReply(from *ControllerReply, to *ControllerReply) {
 	to.ClerkId = from.ClerkId
 	to.SeqNum = from.SeqNum
 	to.LeaderId = from.LeaderId
 
 	to.Succeeded = from.Succeeded
-	to.Value = from.Value
-	to.Exists = from.Exists
 	to.SizeExceeded = from.SizeExceeded
+	to.Config = from.Config
 }
 
 // long-running thread for leader
-func (kv *KVServer) commandExecutor() {
+func (sc *ShardController) commandExecutor() {
 	quit := false
 	for !quit {
 		select {
-		case msg := <-kv.applyCh:
+		case msg := <-sc.applyCh:
 			if msg.SnapshotValid {
-				kv.processSnapshot(msg.SnapshotIndex, msg.SnapshotTerm, msg.Snapshot)
+				sc.processSnapshot(msg.SnapshotIndex, msg.SnapshotTerm, msg.Snapshot)
 			} else {
-				kv.processCommand(msg.CommandIndex, msg.CommandTerm, msg.Command)
+				sc.processCommand(msg.CommandIndex, msg.CommandTerm, msg.Command)
 			}
 		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
-			if kv.killed() {
+			if sc.killed() {
 				quit = true
 			}
 		}
@@ -161,188 +163,152 @@ func (kv *KVServer) commandExecutor() {
 /*
 processSnapshot will only called in follower
 or at the start of a new leader
-for both cases, kv.clerkChans will be empty
+for both cases, sc.clerkChans will be empty
 */
-func (kv *KVServer) processSnapshot(snapshotIndex int, snapshotTerm int, snapshot []byte) {
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
-	kv.decodeSnapshot(snapshot)
-	kv.latestAppliedIndex = snapshotIndex
-	kv.latestAppliedTerm = snapshotTerm
+func (sc *ShardController) processSnapshot(snapshotIndex int, snapshotTerm int, snapshot []byte) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.decodeSnapshot(snapshot)
+	sc.latestAppliedIndex = snapshotIndex
+	sc.latestAppliedTerm = snapshotTerm
 }
 
-func (kv *KVServer) processCommand(commandIndex int, commandTerm int, commandFromRaft interface{}) {
-	TempDPrintf("KVServer: %v, processCommand() is called with commandIndex: %v, commandTerm: %v, commandFromRaft: %v\n", kv.me, commandIndex, commandTerm, commandFromRaft)
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
-	if commandIndex != kv.latestAppliedIndex+1 {
-		log.Fatalf("KVServer: %v, expecting log index: %v, got %v", kv.me, kv.latestAppliedIndex+1, commandIndex)
+func (sc *ShardController) processCommand(commandIndex int, commandTerm int, commandFromRaft interface{}) {
+	TempDPrintf("ShardController %v, processCommand() is called with commandIndex: %v, commandTerm: %v, commandFromRaft: %v\n", sc.me, commandIndex, commandTerm, commandFromRaft)
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	if commandIndex != sc.latestAppliedIndex+1 {
+		log.Fatalf("ShardController %v, expecting log index: %v, got %v", sc.me, sc.latestAppliedIndex+1, commandIndex)
 	} else {
-		kv.latestAppliedIndex++
+		sc.latestAppliedIndex++
 	}
-	if commandTerm < kv.latestAppliedTerm {
-		log.Fatalf("KVServer: %v, expecting log term: >=%v, got %v", kv.me, kv.latestAppliedTerm, commandTerm)
+	if commandTerm < sc.latestAppliedTerm {
+		log.Fatalf("ShardController %v, expecting log term: >=%v, got %v", sc.me, sc.latestAppliedTerm, commandTerm)
 	} else {
-		kv.latestAppliedTerm = commandTerm
+		sc.latestAppliedTerm = commandTerm
 	}
 
-	var reply *RequestReply
+	var reply *ControllerReply
 	noop, isNoop := commandFromRaft.(raft.Noop)
 	if isNoop {
-		TempDPrintf("KVServer %v receives noop: %v\n", kv.me, noop)
+		TempDPrintf("KVServer %v receives noop: %v\n", sc.me, noop)
 		return
 	}
-	command, isKVCommand := commandFromRaft.(KVCommand)
-	if !isKVCommand {
-		log.Fatalf("KVServer %v, expecting a KVCommand: %v\n", kv.me, command)
+	command, isControllerCommand := commandFromRaft.(ControllerCommand)
+	if !isControllerCommand {
+		log.Fatalf("KVServer %v, expecting a ControllerCommand: %v\n", sc.me, command)
 	}
-	if kv.cachedReplies[command.ClerkId].SeqNum >= command.SeqNum {
+	if sc.cachedReplies[command.ClerkId].SeqNum >= command.SeqNum {
 		// drop the duplicated commands
 		return
 	}
 	switch command.Operation {
-	case GET:
-		reply = kv.processGet(command)
-	case PUT:
-		reply = kv.processPut(command)
-	case APPEND:
-		reply = kv.processAppend(command)
+	case JOIN:
+		reply = sc.processJoin(command)
+	case LEAVE:
+		reply = sc.processLeave(command)
+	case MOVE:
+		reply = sc.processMove(command)
+	case QUERY:
+		reply = sc.processQuery(command)
 	default:
-		log.Fatalf("KVServer: %v, Got unsupported operation: %v", kv.me, command.Operation)
+		log.Fatalf("ShardController %v, Got unsupported operation: %v", sc.me, command.Operation)
 	}
 	// caching the latest reply for each client
-	// kv.cachedReplies[reply.ClerkId].SeqNum < reply.SeqNum
-	kv.cachedReplies[reply.ClerkId] = *reply
-	TempDPrintf("KVServer: %v, processCommand() finishes with reply: %v\n", kv.me, reply)
-	go kv.sendReply(reply)
+	// sc.cachedReplies[reply.ClerkId].SeqNum < reply.SeqNum
+	sc.cachedReplies[reply.ClerkId] = *reply
+	TempDPrintf("ShardController %v, processCommand() finishes with reply: %v\n", sc.me, reply)
+	go sc.sendReply(reply)
 }
 
-func (kv *KVServer) sendReply(reply *RequestReply) {
-	TempDPrintf("KVServer: %v, sends to: %v reply %v \n", kv.me, reply, reply.ClerkId)
-	kv.mu.Lock()
-	clerkChan := kv.clerkChans[reply.ClerkId]
-	kv.mu.Unlock()
+func (sc *ShardController) processJoin(command ControllerCommand) *ControllerReply {
+	reply := ControllerReply{
+		ClerkId:  command.ClerkId,
+		SeqNum:   command.SeqNum,
+		LeaderId: sc.me,
+
+		Succeeded: true,
+	}
+	return &reply
+}
+
+func (sc *ShardController) processLeave(command ControllerCommand) *ControllerReply {
+	reply := ControllerReply{
+		ClerkId:  command.ClerkId,
+		SeqNum:   command.SeqNum,
+		LeaderId: sc.me,
+
+		Succeeded: true,
+	}
+	return &reply
+}
+
+func (sc *ShardController) processMove(command ControllerCommand) *ControllerReply {
+	reply := ControllerReply{
+		ClerkId:  command.ClerkId,
+		SeqNum:   command.SeqNum,
+		LeaderId: sc.me,
+
+		Succeeded: true,
+	}
+	return &reply
+}
+
+func (sc *ShardController) processQuery(command ControllerCommand) *ControllerReply {
+	reply := ControllerReply{
+		ClerkId:  command.ClerkId,
+		SeqNum:   command.SeqNum,
+		LeaderId: sc.me,
+
+		Succeeded: true,
+	}
+	return &reply
+}
+
+func (sc *ShardController) sendReply(reply *ControllerReply) {
+	TempDPrintf("ShardController %v, sends to: %v reply %v \n", sc.me, reply, reply.ClerkId)
+	sc.mu.Lock()
+	clerkChan := sc.clerkChans[reply.ClerkId]
+	sc.mu.Unlock()
 	quit := false
 	for !quit {
 		select {
 		case clerkChan <- *reply:
 		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
-			isValidLeader := kv.rf.IsValidLeader()
-			if kv.killed() || !isValidLeader {
+			isValidLeader := sc.rf.IsValidLeader()
+			if sc.killed() || !isValidLeader {
 				quit = true
 			}
 		}
 	}
 }
 
-func (kv *KVServer) processGet(command KVCommand) *RequestReply {
-	value, exists := kv.kvStore[command.Key]
-	reply := &RequestReply{
-		ClerkId:  command.ClerkId,
-		SeqNum:   command.SeqNum,
-		LeaderId: kv.me,
-
-		Succeeded: true,
-		Value:     value,
-		Exists:    exists,
-	}
-	return reply
-}
-
-func (kv *KVServer) processPut(command KVCommand) *RequestReply {
-	kv.kvStore[command.Key] = command.Value
-	reply := &RequestReply{
-		ClerkId:   command.ClerkId,
-		SeqNum:    command.SeqNum,
-		LeaderId:  kv.me,
-		Succeeded: true,
-	}
-	return reply
-}
-
-func (kv *KVServer) processAppend(command KVCommand) *RequestReply {
-	value, exists := kv.kvStore[command.Key]
-	kv.kvStore[command.Key] = value + command.Value
-	reply := &RequestReply{
-		ClerkId:  command.ClerkId,
-		SeqNum:   command.SeqNum,
-		LeaderId: kv.me,
-
-		Succeeded: true,
-		Value:     value,
-		Exists:    exists,
-	}
-	return reply
-}
-
-// func (kv *KVServer) fakeReply() *RequestReply {
-// 	return &RequestReply{}
-// }
-
-/*
-servers[] contains the ports of the set of
-servers that will cooperate via Raft to
-form the fault-tolerant key/value service.
-me is the index of the current server in servers[].
-the k/v server should store snapshots through the underlying Raft
-implementation, which should call persister.SaveStateAndSnapshot() to atomically save the Raft state along with the snapshot.
-the k/v server should snapshot when Raft's saved state exceeds maxraftstate bytes, in order to allow Raft to garbage-collect its log. if maxraftstate is -1, you don't need to snapshot.
-StartKVServer() must return quickly, so it should start goroutines for any long-running work.
-*/
-func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxRaftState int) *KVServer {
-	// call labgob.Register on structures you want
-	// Go's RPC library to marshall/unmarshall.
-	labgob.Register(KVCommand{})
-
-	kv := new(KVServer)
-	kv.me = me
-
-	// command size checking will not be disabled
-	if maxRaftState != -1 {
-		maxRaftState = 8 * maxRaftState
-	}
-	kv.applyCh = make(chan raft.ApplyMsg)
-	kv.rf = raft.Make(servers, me, persister, kv.applyCh, maxRaftState)
-	kv.maxRaftState = maxRaftState
-
-	kv.latestAppliedIndex = 0
-	kv.latestAppliedTerm = 0
-	kv.kvStore = make(map[string]string)
-	kv.cachedReplies = make(map[int64]RequestReply)
-	kv.clerkChans = make(map[int64]chan RequestReply)
-
-	go kv.commandExecutor()
-	go kv.snapshotController()
-
-	return kv
-}
-
-func (kv *KVServer) snapshotController() {
+func (sc *ShardController) snapshotController() {
 	quit := false
 	for !quit {
 		select {
-		case <-kv.rf.SignalSnapshot:
-			kv.mu.Lock()
-			data := kv.encodeSnapshot()
+		case <-sc.rf.SignalSnapshot:
+			sc.mu.Lock()
+			data := sc.encodeSnapshot()
 			snapshot := raft.SnapshotInfo{
 				Data:              data,
-				LastIncludedIndex: kv.latestAppliedIndex,
+				LastIncludedIndex: sc.latestAppliedIndex,
 			}
-			kv.mu.Unlock()
+			sc.mu.Unlock()
 			quit1 := false
 			for !quit1 {
 				select {
-				case kv.rf.SnapshotChan <- snapshot:
+				case sc.rf.SnapshotChan <- snapshot:
 					quit1 = true
 				case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
-					if kv.killed() {
+					if sc.killed() {
 						quit1 = true
 						quit = true
 					}
 				}
 			}
 		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
-			if kv.killed() {
+			if sc.killed() {
 				quit = true
 			}
 		}
@@ -350,58 +316,92 @@ func (kv *KVServer) snapshotController() {
 }
 
 /*
-must be called with kv.mu.Lock
+must be called with sc.mu.Lock
 */
-func (kv *KVServer) decodeSnapshot(snapshot []byte) {
+func (sc *ShardController) decodeSnapshot(snapshot []byte) {
 	reader := bytes.NewBuffer(snapshot)
 	d := labgob.NewDecoder(reader)
 
 	var maxRaftState int
-	var kvStore map[string]string
-	var cachedReplies map[int64]RequestReply
+	var configs []Config
+	var cachedReplies map[int64]ControllerReply
 
 	if d.Decode(&maxRaftState) != nil ||
-		d.Decode(&kvStore) != nil ||
+		d.Decode(&configs) != nil ||
 		d.Decode(&cachedReplies) != nil {
 		log.Fatalf("decoding error!\n")
 	} else {
-		kv.maxRaftState = maxRaftState
-		kv.kvStore = kvStore
-		kv.cachedReplies = cachedReplies
+		sc.maxRaftState = maxRaftState
+		sc.configs = configs
+		sc.cachedReplies = cachedReplies
 	}
 }
 
 /*
-must be called with kv.mu.Lock
+must be called with sc.mu.Lock
 */
-func (kv *KVServer) encodeSnapshot() []byte {
+func (sc *ShardController) encodeSnapshot() []byte {
 	writer := new(bytes.Buffer)
 	e := labgob.NewEncoder(writer)
-	if e.Encode(kv.maxRaftState) != nil ||
-		// e.Encode(kv.latestAppliedIndex) != nil ||
-		// e.Encode(kv.latestAppliedTerm) != nil ||
-		e.Encode(kv.kvStore) != nil ||
-		e.Encode(kv.cachedReplies) != nil {
+	if e.Encode(sc.maxRaftState) != nil ||
+		// e.Encode(sc.latestAppliedIndex) != nil ||
+		// e.Encode(sc.latestAppliedTerm) != nil ||
+		e.Encode(sc.configs) != nil ||
+		e.Encode(sc.cachedReplies) != nil {
 		log.Fatalf("encoding error!\n")
 	}
 	data := writer.Bytes()
 	return data
 }
 
-// the tester calls Kill() when a KVServer instance won't
-// be needed again. for your convenience, we supply
-// code to set rf.dead (without needing a lock),
-// and a killed() method to test rf.dead in
-// long-running loops. you can also add your own
-// code to Kill(). you're not required to do anything
-// about this, but it may be convenient (for example)
-// to suppress debug output from a Kill()ed instance.
-func (kv *KVServer) Kill() {
-	atomic.StoreInt32(&kv.dead, 1)
-	kv.rf.Kill()
+// the tester calls Kill() when a ShardCtrler instance won't
+// be needed again. you are not required to do anything
+// in Kill(), but it might be convenient to (for example)
+// turn off debug output from this instance.
+func (sc *ShardController) Kill() {
+	atomic.StoreInt32(&sc.dead, 1)
+	sc.rf.Kill()
+	// Your code here, if desired.
 }
 
-func (kv *KVServer) killed() bool {
-	z := atomic.LoadInt32(&kv.dead)
+func (sc *ShardController) killed() bool {
+	z := atomic.LoadInt32(&sc.dead)
 	return z == 1
+}
+
+// needed by shardsc tester
+func (sc *ShardController) Raft() *raft.Raft {
+	return sc.rf
+}
+
+// servers[] contains the ports of the set of
+// servers that will cooperate via Raft to
+// form the fault-tolerant shardctrler service.
+// me is the index of the current server in servers[].
+func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister) *ShardController {
+	labgob.Register(ControllerCommand{})
+	sc := new(ShardController)
+	sc.me = me
+	maxRaftState := -1
+	// command size checking will not be disabled
+	if maxRaftState != -1 {
+		maxRaftState = 8 * maxRaftState
+	}
+	sc.applyCh = make(chan raft.ApplyMsg)
+	sc.rf = raft.Make(servers, me, persister, sc.applyCh, maxRaftState)
+	sc.maxRaftState = maxRaftState
+
+	sc.cachedReplies = make(map[int64]ControllerReply)
+	sc.clerkChans = make(map[int64]chan ControllerReply)
+
+	sc.latestAppliedIndex = 0
+	sc.latestAppliedTerm = 0
+
+	sc.configs = make([]Config, 1)
+	sc.configs[0].Groups = map[int][]string{}
+
+	go sc.commandExecutor()
+	go sc.snapshotController()
+
+	return sc
 }

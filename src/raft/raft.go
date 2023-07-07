@@ -161,6 +161,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 // rf.mu is held
 func (rf *Raft) commitNoop() {
+	KVStoreDPrintf("Server: %v commitNoop() gets running..\n", rf.me)
 	noop := Noop{
 		Operation: NOOP,
 	}
