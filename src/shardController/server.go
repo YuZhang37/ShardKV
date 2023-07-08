@@ -28,7 +28,7 @@ func (sc *ShardController) RequestHandler(args *ControllerRequestArgs, reply *Co
 	clerkChan := make(chan ControllerReply)
 	sc.clerkChans[args.ClerkId] = clerkChan
 	sc.mu.Unlock()
-	TempDPrintf("Got command: ClerkId=%v, SeqNum=%v Operation=%v, Command: %v\n", command.ClerkId, command.SeqNum, command.Operation, command)
+	TempDPrintf("ShardController: %v, Got command: ClerkId=%v, SeqNum=%v Operation=%v, Command: %v\n", sc.me, command.ClerkId, command.SeqNum, command.Operation, command)
 	if !sc.startCommit(command, reply) {
 		return
 	}
@@ -36,7 +36,7 @@ func (sc *ShardController) RequestHandler(args *ControllerRequestArgs, reply *Co
 	sc.mu.Lock()
 	delete(sc.clerkChans, args.ClerkId)
 	sc.mu.Unlock()
-	TempDPrintf("RequestHandler() finishes with %v\n", reply)
+	TempDPrintf("ShardController: %v, RequestHandler() finishes with %v\n", sc.me, reply)
 }
 
 func (sc *ShardController) checkLeader(args *ControllerRequestArgs, reply *ControllerReply) bool {
@@ -65,16 +65,16 @@ func (sc *ShardController) checkCachedReply(args *ControllerRequestArgs, reply *
 
 func (sc *ShardController) getControllerCommand(args *ControllerRequestArgs, reply *ControllerReply) *ControllerCommand {
 	command := &ControllerCommand{
-		ClerkId:       args.ClerkId,
-		SeqNum:        args.SeqNum,
-		Operation:     args.Operation,
-		JoinedServers: args.JoinedServers,
-		LeaveGIDs:     args.LeaveGIDs,
-		MovedShard:    args.MovedShard,
-		MovedGID:      args.MovedGID,
-		QueryNum:      args.QueryNum,
+		ClerkId:      args.ClerkId,
+		SeqNum:       args.SeqNum,
+		Operation:    args.Operation,
+		JoinedGroups: args.JoinedGroups,
+		LeaveGIDs:    args.LeaveGIDs,
+		MovedShard:   args.MovedShard,
+		MovedGID:     args.MovedGID,
+		QueryNum:     args.QueryNum,
 	}
-	if unsafe.Sizeof(command) >= MAXKVCOMMANDSIZE {
+	if unsafe.Sizeof(command) >= MAXCONTROLLERCOMMANDSIZE {
 		reply.SizeExceeded = true
 		reply.LeaderId = -1
 		return nil
@@ -91,7 +91,7 @@ func (sc *ShardController) startCommit(command *ControllerCommand, reply *Contro
 			return false
 		}
 		if index > 0 {
-			TempDPrintf("Appended command: ClerkId=%v, SeqNum=%v Operation=%v, Command: %v\n", command.ClerkId, command.SeqNum, command.Operation, command)
+			TempDPrintf("ShardController: %v, Appended command: ClerkId=%v, SeqNum=%v Operation=%v, Command: %v\n", sc.me, command.ClerkId, command.SeqNum, command.Operation, command)
 			quit = true
 		} else {
 			// the server is the leader, but log exceeds maxLogSize
@@ -119,7 +119,7 @@ func (sc *ShardController) waitReply(clerkChan chan ControllerReply, args *Contr
 			if tempReply.SeqNum == args.SeqNum {
 				sc.copyReply(&tempReply, reply)
 				quit = true
-				TempDPrintf("RequestHandler() succeeds with %v\n", reply)
+				TempDPrintf("ShardController: %v, RequestHandler() succeeds with %v\n", sc.me, reply)
 			}
 		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
 			isValidLeader := sc.rf.IsValidLeader()
@@ -143,10 +143,12 @@ func (sc *ShardController) copyReply(from *ControllerReply, to *ControllerReply)
 
 // long-running thread for leader
 func (sc *ShardController) commandExecutor() {
+	TempDPrintf("ShardController: %v commandExecutor() is running...\n", sc.me)
 	quit := false
 	for !quit {
 		select {
 		case msg := <-sc.applyCh:
+			TempDPrintf("ShardController: %v commandExecutor() got a msg: %v\n", sc.me, msg)
 			if msg.SnapshotValid {
 				sc.processSnapshot(msg.SnapshotIndex, msg.SnapshotTerm, msg.Snapshot)
 			} else {
@@ -191,12 +193,12 @@ func (sc *ShardController) processCommand(commandIndex int, commandTerm int, com
 	var reply *ControllerReply
 	noop, isNoop := commandFromRaft.(raft.Noop)
 	if isNoop {
-		TempDPrintf("KVServer %v receives noop: %v\n", sc.me, noop)
+		TempDPrintf("ShardController %v receives noop: %v\n", sc.me, noop)
 		return
 	}
 	command, isControllerCommand := commandFromRaft.(ControllerCommand)
 	if !isControllerCommand {
-		log.Fatalf("KVServer %v, expecting a ControllerCommand: %v\n", sc.me, command)
+		log.Fatalf("ShardController %v, expecting a ControllerCommand: %v\n", sc.me, command)
 	}
 	if sc.cachedReplies[command.ClerkId].SeqNum >= command.SeqNum {
 		// drop the duplicated commands
@@ -219,50 +221,6 @@ func (sc *ShardController) processCommand(commandIndex int, commandTerm int, com
 	sc.cachedReplies[reply.ClerkId] = *reply
 	TempDPrintf("ShardController %v, processCommand() finishes with reply: %v\n", sc.me, reply)
 	go sc.sendReply(reply)
-}
-
-func (sc *ShardController) processJoin(command ControllerCommand) *ControllerReply {
-	reply := ControllerReply{
-		ClerkId:  command.ClerkId,
-		SeqNum:   command.SeqNum,
-		LeaderId: sc.me,
-
-		Succeeded: true,
-	}
-	return &reply
-}
-
-func (sc *ShardController) processLeave(command ControllerCommand) *ControllerReply {
-	reply := ControllerReply{
-		ClerkId:  command.ClerkId,
-		SeqNum:   command.SeqNum,
-		LeaderId: sc.me,
-
-		Succeeded: true,
-	}
-	return &reply
-}
-
-func (sc *ShardController) processMove(command ControllerCommand) *ControllerReply {
-	reply := ControllerReply{
-		ClerkId:  command.ClerkId,
-		SeqNum:   command.SeqNum,
-		LeaderId: sc.me,
-
-		Succeeded: true,
-	}
-	return &reply
-}
-
-func (sc *ShardController) processQuery(command ControllerCommand) *ControllerReply {
-	reply := ControllerReply{
-		ClerkId:  command.ClerkId,
-		SeqNum:   command.SeqNum,
-		LeaderId: sc.me,
-
-		Succeeded: true,
-	}
-	return &reply
 }
 
 func (sc *ShardController) sendReply(reply *ControllerReply) {
@@ -376,7 +334,7 @@ func (sc *ShardController) Raft() *raft.Raft {
 
 // servers[] contains the ports of the set of
 // servers that will cooperate via Raft to
-// form the fault-tolerant shardctrler service.
+// form the fault-tolerant shardController service.
 // me is the index of the current server in servers[].
 func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister) *ShardController {
 	labgob.Register(ControllerCommand{})
@@ -397,11 +355,21 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 	sc.latestAppliedIndex = 0
 	sc.latestAppliedTerm = 0
 
-	sc.configs = make([]Config, 1)
-	sc.configs[0].Groups = map[int][]string{}
+	sc.configs = make([]Config, 0)
+	sc.initConfig(0)
 
 	go sc.commandExecutor()
 	go sc.snapshotController()
 
 	return sc
+}
+
+// all Shards are managed by group 0, which has no servers
+func (sc *ShardController) initConfig(num int) {
+	config := Config{}
+	config.Num = num
+	config.Groups = make(map[int][]string)
+	config.ServerNames = make(map[string]int)
+	config.GroupShards = make(map[int][]int)
+	sc.configs = append(sc.configs, config)
 }

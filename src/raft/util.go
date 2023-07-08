@@ -41,8 +41,9 @@ const DebugSnapshot = false
 const DebugApplyCommand = false
 const DebugTemp = false
 const DebugSnapshot2 = false
-const DebugKVStore = true
+const DebugKVStore = false
 const DebugCommitNoop = false
+const DebugShardController = true
 
 // const colorRed = "\033[0;31m"
 
@@ -133,6 +134,13 @@ func ApplyCommandDPrintf(format string, a ...interface{}) (n int, err error) {
 
 func KVStoreDPrintf(format string, a ...interface{}) (n int, err error) {
 	if DebugKVStore {
+		log.Printf(format, a...)
+	}
+	return
+}
+
+func ShardControllerDPrintf(format string, a ...interface{}) (n int, err error) {
+	if DebugShardController {
 		log.Printf(format, a...)
 	}
 	return

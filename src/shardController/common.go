@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	CHECKTIMEOUT      = 200
-	MAXKVCOMMANDSIZE  = 500
-	LEASTMAXRAFTSTATE = 1000
+	CHECKTIMEOUT             = 200
+	MAXCONTROLLERCOMMANDSIZE = 500
+	LEASTMAXRAFTSTATE        = 1000
 )
 
 const (
@@ -18,6 +18,28 @@ const (
 	LEAVE = "Leave"
 	MOVE  = "Move"
 	QUERY = "Query"
+)
+
+const (
+	NOERROR = 0
+
+	MOVE_NOMOVENEEDED   = -1
+	MOVE_NOMOVEDSHARED  = 1
+	MOVE_NOMOVEDGROUPID = 2
+
+	JOIN_GIDEXISTS          = 3
+	JOIN_SERVEREXISTS       = 4
+	JOIN_SERVERDUPINREQUEST = 5
+
+	LEAVE_GIDNOTEXISTS = 6
+)
+
+const (
+	JOIN_GIDEXISTS_MESSAGE          = "gid %v exists"
+	JOIN_SERVEREXISTS_MESSAGE       = "servername %v exists in GID %v"
+	JOIN_SERVERDUPINREQUEST_MESSAGE = "servername %v exists in GID %v"
+
+	LEAVE_GIDNOTEXISTS_MESSAGE = "gid %v doesn't exist"
 )
 
 /************** definition for controller client ****************/
@@ -41,6 +63,11 @@ type Config struct {
 	Num    int              // config number
 	Shards [NShards]int     // shard -> gid
 	Groups map[int][]string // gid -> servers[]
+	// servername -> group id
+	ServerNames map[string]int
+
+	// group -> shards it manages, must be sorted
+	GroupShards map[int][]int
 }
 type ShardController struct {
 	mu      sync.Mutex
@@ -64,14 +91,14 @@ type ShardController struct {
 }
 
 type ControllerCommand struct {
-	ClerkId       int64
-	SeqNum        int64
-	Operation     string
-	JoinedServers map[int][]string
-	LeaveGIDs     []int
-	MovedShard    int
-	MovedGID      int
-	QueryNum      int
+	ClerkId      int64
+	SeqNum       int64
+	Operation    string
+	JoinedGroups map[int][]string
+	LeaveGIDs    []int
+	MovedShard   int
+	MovedGID     int
+	QueryNum     int
 }
 
 /*********** end of definition for controller server *************/
@@ -83,7 +110,7 @@ type ControllerRequestArgs struct {
 
 	Operation string
 	// Join
-	JoinedServers map[int][]string
+	JoinedGroups map[int][]string
 	// Leave
 	LeaveGIDs []int
 	// Move
@@ -98,9 +125,15 @@ type ControllerReply struct {
 	SeqNum   int64
 	LeaderId int
 
-	Succeeded    bool
+	// being committed or not
+	Succeeded bool
+	// set by requesthandler
 	SizeExceeded bool
-	Config       Config
+	// used for get
+	Config    Config
+	ErrorCode int
+	// join and leave
+	ErrorMessage string
 }
 
 /************ end of clerk-controller RPC definition *************/

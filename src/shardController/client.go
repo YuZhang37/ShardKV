@@ -41,26 +41,15 @@ func (ck *Clerk) sendRequest(args *ControllerRequestArgs) *ControllerReply {
 			reply = tempReply
 		} else {
 			if tempReply.SizeExceeded {
-				log.Fatalf("command is too large, max allowed command size is %v\n", MAXKVCOMMANDSIZE)
+				log.Fatalf("command is too large, max allowed command size is %v\n", MAXCONTROLLERCOMMANDSIZE)
 			}
 			TempDPrintf("sendRequest() sent to leader %v, got tempReply: %v for args: %v not successful\n", ck.leaderId, tempReply, args)
 			// the raft server or the kv server is killed or no longer the leader
-			// if tempReply.LeaderId != -1 {
-			// 	ck.leaderId = tempReply.LeaderId
-			// } else {
 			ck.leaderId = mathRand.Intn(len(ck.servers))
-			// }
 		}
 	}
 	TempDPrintf("sendRequest() finishes with %v\n", reply)
 	return &reply
-}
-
-func nrand() int64 {
-	max := big.NewInt(int64(1) << 62)
-	bigx, _ := rand.Int(rand.Reader, max)
-	x := bigx.Int64()
-	return x
 }
 
 func (ck *Clerk) Query(num int) Config {
@@ -76,14 +65,14 @@ func (ck *Clerk) Query(num int) Config {
 	return reply.Config
 }
 
-func (ck *Clerk) Join(servers map[int][]string) {
+func (ck *Clerk) Join(groups map[int][]string) {
 	ck.seqNum++
 	args := ControllerRequestArgs{
 		ClerkId: ck.clerkId,
 		SeqNum:  ck.seqNum,
 
-		Operation:     JOIN,
-		JoinedServers: servers,
+		Operation:    JOIN,
+		JoinedGroups: groups,
 	}
 	ck.sendRequest(&args)
 }
@@ -111,4 +100,11 @@ func (ck *Clerk) Move(shard int, gid int) {
 		MovedGID:   gid,
 	}
 	ck.sendRequest(&args)
+}
+
+func nrand() int64 {
+	max := big.NewInt(int64(1) << 62)
+	bigx, _ := rand.Int(rand.Reader, max)
+	x := bigx.Int64()
+	return x
 }
