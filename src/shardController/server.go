@@ -13,7 +13,7 @@ import (
 )
 
 func (sc *ShardController) RequestHandler(args *ControllerRequestArgs, reply *ControllerReply) {
-	TempDPrintf("ShardController: %v, RequestHandler() is called with %v\n", sc.me, args)
+	sc.tempDPrintf("ShardController: %v, RequestHandler() is called with %v\n", sc.me, args)
 	if !sc.checkLeader(args, reply) {
 		return
 	}
@@ -28,7 +28,7 @@ func (sc *ShardController) RequestHandler(args *ControllerRequestArgs, reply *Co
 	clerkChan := make(chan ControllerReply)
 	sc.clerkChans[args.ClerkId] = clerkChan
 	sc.mu.Unlock()
-	TempDPrintf("ShardController: %v, Got command: ClerkId=%v, SeqNum=%v Operation=%v, Command: %v\n", sc.me, command.ClerkId, command.SeqNum, command.Operation, command)
+	sc.tempDPrintf("ShardController: %v, Got command: ClerkId=%v, SeqNum=%v Operation=%v, Command: %v\n", sc.me, command.ClerkId, command.SeqNum, command.Operation, command)
 	if !sc.startCommit(command, reply) {
 		return
 	}
@@ -36,13 +36,13 @@ func (sc *ShardController) RequestHandler(args *ControllerRequestArgs, reply *Co
 	sc.mu.Lock()
 	delete(sc.clerkChans, args.ClerkId)
 	sc.mu.Unlock()
-	TempDPrintf("ShardController: %v, RequestHandler() finishes with %v\n", sc.me, reply)
+	sc.tempDPrintf("ShardController: %v, RequestHandler() finishes with %v\n", sc.me, reply)
 }
 
 func (sc *ShardController) checkLeader(args *ControllerRequestArgs, reply *ControllerReply) bool {
 	leaderId, votedFor, term := sc.rf.GetLeaderId()
 	if votedFor != sc.me {
-		TempDPrintf("ShardController: %v is not the leader. LeaderId: %v, votedFor: %v, term: %v\n", sc.me, leaderId, votedFor, term)
+		sc.tempDPrintf("ShardController: %v is not the leader. LeaderId: %v, votedFor: %v, term: %v\n", sc.me, leaderId, votedFor, term)
 		reply.LeaderId = votedFor
 		return false
 	}
@@ -56,7 +56,7 @@ func (sc *ShardController) checkCachedReply(args *ControllerRequestArgs, reply *
 		// the previous reply is lost
 		sc.copyReply(&cachedReply, reply)
 		sc.mu.Unlock()
-		TempDPrintf("ShardController: %v caches reply. Reply: %v\n", sc.me, cachedReply)
+		sc.tempDPrintf("ShardController: %v caches reply. Reply: %v\n", sc.me, cachedReply)
 		return true
 	}
 	sc.mu.Unlock()
@@ -91,7 +91,7 @@ func (sc *ShardController) startCommit(command *ControllerCommand, reply *Contro
 			return false
 		}
 		if index > 0 {
-			TempDPrintf("ShardController: %v, Appended command: ClerkId=%v, SeqNum=%v Operation=%v, Command: %v\n", sc.me, command.ClerkId, command.SeqNum, command.Operation, command)
+			sc.tempDPrintf("ShardController: %v, Appended command: ClerkId=%v, SeqNum=%v Operation=%v, Command: %v\n", sc.me, command.ClerkId, command.SeqNum, command.Operation, command)
 			quit = true
 		} else {
 			// the server is the leader, but log exceeds maxLogSize
@@ -101,8 +101,8 @@ func (sc *ShardController) startCommit(command *ControllerCommand, reply *Contro
 				reply.LeaderId = -1
 				return false
 			}
-			TempDPrintf("ShardController: %v the leader can't add new command: %v, LeaderId: %v\n", sc.me, command, sc.me)
-			TempDPrintf("sc.me: %v, retry index: %v, on command: %v", sc.me, index, command)
+			sc.tempDPrintf("ShardController: %v the leader can't add new command: %v, LeaderId: %v\n", sc.me, command, sc.me)
+			sc.tempDPrintf("sc.me: %v, retry index: %v, on command: %v", sc.me, index, command)
 		}
 	}
 	return true
@@ -119,7 +119,7 @@ func (sc *ShardController) waitReply(clerkChan chan ControllerReply, args *Contr
 			if tempReply.SeqNum == args.SeqNum {
 				sc.copyReply(&tempReply, reply)
 				quit = true
-				TempDPrintf("ShardController: %v, RequestHandler() succeeds with %v\n", sc.me, reply)
+				sc.tempDPrintf("ShardController: %v, RequestHandler() succeeds with %v\n", sc.me, reply)
 			}
 		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
 			isValidLeader := sc.rf.IsValidLeader()
@@ -143,12 +143,12 @@ func (sc *ShardController) copyReply(from *ControllerReply, to *ControllerReply)
 
 // long-running thread for leader
 func (sc *ShardController) commandExecutor() {
-	TempDPrintf("ShardController: %v commandExecutor() is running...\n", sc.me)
+	sc.tempDPrintf("ShardController: %v commandExecutor() is running...\n", sc.me)
 	quit := false
 	for !quit {
 		select {
 		case msg := <-sc.applyCh:
-			TempDPrintf("ShardController: %v commandExecutor() got a msg: %v\n", sc.me, msg)
+			sc.tempDPrintf("ShardController: %v commandExecutor() got a msg: %v\n", sc.me, msg)
 			if msg.SnapshotValid {
 				sc.processSnapshot(msg.SnapshotIndex, msg.SnapshotTerm, msg.Snapshot)
 			} else {
@@ -176,7 +176,7 @@ func (sc *ShardController) processSnapshot(snapshotIndex int, snapshotTerm int, 
 }
 
 func (sc *ShardController) processCommand(commandIndex int, commandTerm int, commandFromRaft interface{}) {
-	TempDPrintf("ShardController %v, processCommand() is called with commandIndex: %v, commandTerm: %v, commandFromRaft: %v\n", sc.me, commandIndex, commandTerm, commandFromRaft)
+	sc.tempDPrintf("ShardController %v, processCommand() is called with commandIndex: %v, commandTerm: %v, commandFromRaft: %v\n", sc.me, commandIndex, commandTerm, commandFromRaft)
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	if commandIndex != sc.latestAppliedIndex+1 {
@@ -193,7 +193,7 @@ func (sc *ShardController) processCommand(commandIndex int, commandTerm int, com
 	var reply *ControllerReply
 	noop, isNoop := commandFromRaft.(raft.Noop)
 	if isNoop {
-		TempDPrintf("ShardController %v receives noop: %v\n", sc.me, noop)
+		sc.tempDPrintf("ShardController %v receives noop: %v\n", sc.me, noop)
 		return
 	}
 	command, isControllerCommand := commandFromRaft.(ControllerCommand)
@@ -219,12 +219,12 @@ func (sc *ShardController) processCommand(commandIndex int, commandTerm int, com
 	// caching the latest reply for each client
 	// sc.cachedReplies[reply.ClerkId].SeqNum < reply.SeqNum
 	sc.cachedReplies[reply.ClerkId] = *reply
-	TempDPrintf("ShardController %v, processCommand() finishes with reply: %v\n", sc.me, reply)
+	sc.tempDPrintf("ShardController %v, processCommand() finishes with reply: %v\n", sc.me, reply)
 	go sc.sendReply(reply)
 }
 
 func (sc *ShardController) sendReply(reply *ControllerReply) {
-	TempDPrintf("ShardController %v, sends to: %v reply %v \n", sc.me, reply, reply.ClerkId)
+	sc.tempDPrintf("ShardController %v, sends to: %v reply %v \n", sc.me, reply, reply.ClerkId)
 	sc.mu.Lock()
 	clerkChan := sc.clerkChans[reply.ClerkId]
 	sc.mu.Unlock()
@@ -370,6 +370,6 @@ func (sc *ShardController) initConfig(num int) {
 	config.Num = num
 	config.Groups = make(map[int][]string)
 	config.ServerNames = make(map[string]int)
-	config.GroupShards = make(map[int][]int)
+	config.GroupInfos = make([]GroupInfo, 0)
 	sc.configs = append(sc.configs, config)
 }

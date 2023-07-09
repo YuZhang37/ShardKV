@@ -55,7 +55,13 @@ type Clerk struct {
 /************** definition for controller server *************/
 
 // The number of shards.
-const NShards = 10
+const NShards = 100
+
+type GroupInfo struct {
+	GID        int
+	Shards     []int
+	JoinedTerm int
+}
 
 // A configuration -- an assignment of shards to groups.
 // Please don't change this.
@@ -66,8 +72,10 @@ type Config struct {
 	// servername -> group id
 	ServerNames map[string]int
 
-	// group -> shards it manages, must be sorted
-	GroupShards map[int][]int
+	// groups are sorted first in joined term, second in gid in ascending order
+	GroupInfos []GroupInfo
+	Moved      bool
+	Operation  string
 }
 type ShardController struct {
 	mu      sync.Mutex
