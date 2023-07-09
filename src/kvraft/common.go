@@ -8,12 +8,15 @@ import (
 )
 
 const (
-	PUT               = "Put"
-	APPEND            = "Append"
-	GET               = "Get"
 	CHECKTIMEOUT      = 200
 	MAXKVCOMMANDSIZE  = 500
 	LEASTMAXRAFTSTATE = 1000
+)
+
+const (
+	PUT    = "Put"
+	APPEND = "Append"
+	GET    = "Get"
 )
 
 /************************ clerk definition *********************/
@@ -28,13 +31,6 @@ type Clerk struct {
 /************************ end of clerk *********************/
 
 /************************ server definition *********************/
-type KVCommand struct {
-	ClerkId   int64
-	SeqNum    int64
-	Key       string
-	Value     string
-	Operation string
-}
 type KVServer struct {
 	mu           sync.Mutex
 	me           int
@@ -50,6 +46,15 @@ type KVServer struct {
 
 	latestAppliedIndex int
 	latestAppliedTerm  int
+}
+
+// for raft command
+type KVCommand struct {
+	ClerkId   int64
+	SeqNum    int64
+	Key       string
+	Value     string
+	Operation string
 }
 
 /*

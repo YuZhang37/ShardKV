@@ -14,12 +14,42 @@ import (
 
 func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 	TempDPrintf("KVServer: %v, RequestHandler() is called with %v\n", kv.me, args)
+	if !kv.checkLeader(args, reply) {
+		return
+	}
+	if kv.checkCachedReply(args, reply) {
+		return
+	}
+	command := kv.getKVCommand(args, reply)
+	if command == nil {
+		return
+	}
+	kv.mu.Lock()
+	clerkChan := make(chan RequestReply)
+	kv.clerkChans[args.ClerkId] = clerkChan
+	kv.mu.Unlock()
+	raft.KVStoreDPrintf("Got command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
+	if !kv.startCommit(command, reply) {
+		return
+	}
+	kv.waitReply(clerkChan, args, reply)
+	kv.mu.Lock()
+	delete(kv.clerkChans, args.ClerkId)
+	kv.mu.Unlock()
+	TempDPrintf("RequestHandler() finishes with %v\n", reply)
+}
+
+func (kv *KVServer) checkLeader(args *RequestArgs, reply *RequestReply) bool {
 	leaderId, votedFor, term := kv.rf.GetLeaderId()
 	if votedFor != kv.me {
 		TempDPrintf("KVServer: %v is not the leader. LeaderId: %v, votedFor: %v, term: %v\n", kv.me, leaderId, votedFor, term)
-		reply.LeaderId = leaderId
-		return
+		reply.LeaderId = votedFor
+		return false
 	}
+	return true
+}
+
+func (kv *KVServer) checkCachedReply(args *RequestArgs, reply *RequestReply) bool {
 	kv.mu.Lock()
 	cachedReply := kv.cachedReplies[args.ClerkId]
 	if args.SeqNum == cachedReply.SeqNum {
@@ -27,11 +57,14 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 		kv.copyReply(&cachedReply, reply)
 		kv.mu.Unlock()
 		TempDPrintf("KVServer: %v caches reply. Reply: %v\n", kv.me, cachedReply)
-		return
+		return true
 	}
 	kv.mu.Unlock()
+	return false
+}
 
-	command := KVCommand{
+func (kv *KVServer) getKVCommand(args *RequestArgs, reply *RequestReply) *KVCommand {
+	command := &KVCommand{
 		ClerkId:   args.ClerkId,
 		SeqNum:    args.SeqNum,
 		Key:       args.Key,
@@ -41,19 +74,18 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 	if unsafe.Sizeof(command) >= MAXKVCOMMANDSIZE {
 		reply.SizeExceeded = true
 		reply.LeaderId = -1
-		return
+		return nil
 	}
-	kv.mu.Lock()
-	clerkChan := make(chan RequestReply)
-	kv.clerkChans[args.ClerkId] = clerkChan
-	kv.mu.Unlock()
-	raft.KVStoreDPrintf("Got command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
+	return command
+}
+
+func (kv *KVServer) startCommit(command *KVCommand, reply *RequestReply) bool {
 	quit := false
 	for !quit {
-		index, _, isLeader := kv.rf.Start(command)
+		index, _, isLeader := kv.rf.Start(*command)
 		if !isLeader {
 			reply.LeaderId = -1
-			return
+			return false
 		}
 		if index > 0 {
 			raft.KVStoreDPrintf("Appended command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
@@ -64,14 +96,17 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 			time.Sleep(time.Duration(CHECKTIMEOUT) * time.Millisecond)
 			if kv.killed() {
 				reply.LeaderId = -1
-				return
+				return false
 			}
-			TempDPrintf("KVServer: %v the leader can't add new command: %v, LeaderId: %v\n", kv.me, command, leaderId)
+			TempDPrintf("KVServer: %v the leader can't add new command: %v, LeaderId: %v\n", kv.me, command, kv.me)
 			raft.KVStoreDPrintf("kv.me: %v, retry index: %v, on command: %v", kv.me, index, command)
 		}
 	}
+	return true
+}
 
-	quit = false
+func (kv *KVServer) waitReply(clerkChan chan RequestReply, args *RequestArgs, reply *RequestReply) {
+	quit := false
 	for !quit {
 		select {
 		case tempReply := <-clerkChan:
@@ -91,10 +126,6 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 			}
 		}
 	}
-	kv.mu.Lock()
-	delete(kv.clerkChans, args.ClerkId)
-	kv.mu.Unlock()
-	TempDPrintf("RequestHandler() finishes with %v\n", reply)
 }
 
 func (kv *KVServer) copyReply(from *RequestReply, to *RequestReply) {
@@ -105,6 +136,7 @@ func (kv *KVServer) copyReply(from *RequestReply, to *RequestReply) {
 	to.Succeeded = from.Succeeded
 	to.Value = from.Value
 	to.Exists = from.Exists
+	to.SizeExceeded = from.SizeExceeded
 }
 
 // long-running thread for leader
