@@ -1,6 +1,6 @@
 package shardkv
 
-import "6.5840/shardctrler"
+import "6.5840/shardController"
 import "6.5840/labrpc"
 import "testing"
 import "os"
@@ -57,8 +57,8 @@ type config struct {
 	start time.Time // time at which make_config() was called
 
 	nctrlers      int
-	ctrlerservers []*shardctrler.ShardCtrler
-	mck           *shardctrler.Clerk
+	ctrlerservers []*shardController.ShardController
+	mck           *shardController.Clerk
 
 	ngroups int
 	n       int // servers per k/v group
@@ -221,7 +221,7 @@ func (cfg *config) StartServer(gi int, i int) {
 		cfg.net.Enable(gg.endnames[i][j], true)
 	}
 
-	// ends to talk to shardctrler service
+	// ends to talk to shardController service
 	mends := make([]*labrpc.ClientEnd, cfg.nctrlers)
 	gg.mendnames[i] = make([]string, cfg.nctrlers)
 	for j := 0; j < cfg.nctrlers; j++ {
@@ -279,7 +279,7 @@ func (cfg *config) StartCtrlerserver(i int) {
 
 	p := raft.MakePersister()
 
-	cfg.ctrlerservers[i] = shardctrler.StartServer(ends, i, p)
+	cfg.ctrlerservers[i] = shardController.StartServer(ends, i, p)
 
 	msvc := labrpc.MakeService(cfg.ctrlerservers[i])
 	rfsvc := labrpc.MakeService(cfg.ctrlerservers[i].Raft())
@@ -289,7 +289,7 @@ func (cfg *config) StartCtrlerserver(i int) {
 	cfg.net.AddServer(cfg.ctrlername(i), srv)
 }
 
-func (cfg *config) shardclerk() *shardctrler.Clerk {
+func (cfg *config) shardclerk() *shardController.Clerk {
 	// ClientEnds to talk to ctrler service.
 	ends := make([]*labrpc.ClientEnd, cfg.nctrlers)
 	for j := 0; j < cfg.nctrlers; j++ {
@@ -299,10 +299,10 @@ func (cfg *config) shardclerk() *shardctrler.Clerk {
 		cfg.net.Enable(name, true)
 	}
 
-	return shardctrler.MakeClerk(ends)
+	return shardController.MakeClerk(ends)
 }
 
-// tell the shardctrler that a group is joining.
+// tell the shardController that a group is joining.
 func (cfg *config) join(gi int) {
 	cfg.joinm([]int{gi})
 }
@@ -320,7 +320,7 @@ func (cfg *config) joinm(gis []int) {
 	cfg.mck.Join(m)
 }
 
-// tell the shardctrler that a group is leaving.
+// tell the shardController that a group is leaving.
 func (cfg *config) leave(gi int) {
 	cfg.leavem([]int{gi})
 }
@@ -351,7 +351,7 @@ func make_config(t *testing.T, n int, unreliable bool, maxraftstate int) *config
 
 	// controler
 	cfg.nctrlers = 3
-	cfg.ctrlerservers = make([]*shardctrler.ShardCtrler, cfg.nctrlers)
+	cfg.ctrlerservers = make([]*shardController.ShardController, cfg.nctrlers)
 	for i := 0; i < cfg.nctrlers; i++ {
 		cfg.StartCtrlerserver(i)
 	}
