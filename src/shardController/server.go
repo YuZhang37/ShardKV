@@ -281,7 +281,7 @@ func (sc *ShardController) decodeSnapshot(snapshot []byte) {
 	d := labgob.NewDecoder(reader)
 
 	var maxRaftState int
-	var configs []Config
+	var configs []innerConfig
 	var cachedReplies map[int64]ControllerReply
 
 	if d.Decode(&maxRaftState) != nil ||
@@ -355,7 +355,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 	sc.latestAppliedIndex = 0
 	sc.latestAppliedTerm = 0
 
-	sc.configs = make([]Config, 0)
+	sc.configs = make([]innerConfig, 0)
 	sc.initConfig(0)
 
 	go sc.commandExecutor()
@@ -366,7 +366,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 
 // all Shards are managed by group 0, which has no servers
 func (sc *ShardController) initConfig(num int) {
-	config := Config{}
+	config := innerConfig{}
 	config.Num = num
 	config.Groups = make(map[int][]string)
 	config.ServerNames = make(map[string]int)

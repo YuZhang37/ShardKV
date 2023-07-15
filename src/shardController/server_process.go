@@ -101,8 +101,8 @@ func (sc *ShardController) processMove(command ControllerCommand) *ControllerRep
 	return &reply
 }
 
-func (sc *ShardController) copyConfig(from *Config) *Config {
-	to := Config{}
+func (sc *ShardController) copyConfig(from *innerConfig) *innerConfig {
+	to := innerConfig{}
 	to.Num = from.Num
 	to.Shards = from.Shards
 	to.Groups = make(map[int][]string)
@@ -143,9 +143,18 @@ func (sc *ShardController) processQuery(command ControllerCommand) *ControllerRe
 	}
 	sc.processPrintf(true, "Query", command, reply)
 	if command.QueryNum == -1 || command.QueryNum >= len(sc.configs) {
-		reply.Config = sc.configs[len(sc.configs)-1]
+		reply.Config = Config{
+			Num:    sc.configs[len(sc.configs)-1].Num,
+			Shards: sc.configs[len(sc.configs)-1].Shards,
+			Groups: sc.configs[len(sc.configs)-1].Groups,
+		}
 	} else {
-		reply.Config = sc.configs[command.QueryNum]
+		reply.Config = Config{
+			Num:    sc.configs[command.QueryNum].Num,
+			Shards: sc.configs[command.QueryNum].Shards,
+			Groups: sc.configs[command.QueryNum].Groups,
+		}
+
 	}
 	sc.processPrintf(false, "Query", command, reply)
 	return &reply

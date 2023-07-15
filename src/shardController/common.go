@@ -69,6 +69,11 @@ type Config struct {
 	Num    int              // config number
 	Shards [NShards]int     // shard -> gid
 	Groups map[int][]string // gid -> servers[]
+}
+type innerConfig struct {
+	Num    int              // config number
+	Shards [NShards]int     // shard -> gid
+	Groups map[int][]string // gid -> servers[]
 	// servername -> group id
 	ServerNames map[string]int
 
@@ -95,7 +100,7 @@ type ShardController struct {
 
 	// 0 is the initial config
 	// indexed by config num
-	configs []Config // persist
+	configs []innerConfig // persist
 }
 
 type ControllerCommand struct {
