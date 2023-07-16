@@ -96,7 +96,7 @@ func (rf *Raft) getRaftStateData() []byte {
 		e.Encode(rf.snapshotLastIndex) != nil ||
 		e.Encode(rf.snapshotLastTerm) != nil ||
 		e.Encode(rf.log) != nil {
-		log.Fatalf("encoding error!\n")
+		log.Fatalf("Fatal: getRaftStateData() encoding error!\n")
 	}
 	data := writer.Bytes()
 	return data
@@ -105,9 +105,12 @@ func (rf *Raft) getRaftStateData() []byte {
 func (rf *Raft) getLogSize(logEntries []LogEntry) int {
 	writer := new(bytes.Buffer)
 	e := labgob.NewEncoder(writer)
-	if e.Encode(logEntries) != nil {
-		log.Fatalf("encoding error!\n")
+	for index, logEntry := range logEntries {
+		if e.Encode(logEntry) != nil {
+			log.Fatalf("Fatal: getLogSize() encoding error! index: %v, logEntry: %v\n", index, logEntry)
+		}
 	}
+
 	data := writer.Bytes()
 	return len(data)
 }

@@ -382,7 +382,7 @@ func (kv *KVServer) encodeSnapshot() []byte {
 		// e.Encode(kv.latestAppliedTerm) != nil ||
 		e.Encode(kv.kvStore) != nil ||
 		e.Encode(kv.cachedReplies) != nil {
-		log.Fatalf("encoding error!\n")
+		log.Fatalf("Fatal: encodeSnapshot() in kvraft encoding error!\n")
 	}
 	data := writer.Bytes()
 	return data

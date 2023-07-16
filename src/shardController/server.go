@@ -306,7 +306,7 @@ func (sc *ShardController) encodeSnapshot() []byte {
 		// e.Encode(sc.latestAppliedTerm) != nil ||
 		e.Encode(sc.configs) != nil ||
 		e.Encode(sc.cachedReplies) != nil {
-		log.Fatalf("encoding error!\n")
+		log.Fatalf("Fatal: encodeSnapshot in ShardController encoding error!\n")
 	}
 	data := writer.Bytes()
 	return data

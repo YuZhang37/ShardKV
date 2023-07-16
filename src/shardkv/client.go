@@ -51,17 +51,13 @@ func nrand() int64 {
 // Config.Groups[gid][i] into a labrpc.ClientEnd on which you can
 // send RPCs.
 func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.ClientEnd) *Clerk {
+	TempDPrintf("MakeClerk is called()\n")
 	ck := new(Clerk)
 	ck.clerkId = nrand()
 	ck.seqNum = 1
 	ck.sc = shardController.MakeClerk(ctrlers)
 	ck.make_end = make_end
-	for {
-		ck.config = ck.sc.Query(-1)
-		if len(ck.config.Groups) != 0 {
-			break
-		}
-	}
+	TempDPrintf("MakeClerk finished with ck: %v\n", ck)
 	return ck
 }
 
@@ -111,9 +107,9 @@ This function sends request to kvServer, and handles retries
 The ConfigNum is not set in the request, since it may need to query the controller and change
 */
 func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
-	TempDPrintf("sendRequest() is called with %v\n", args)
+	TempDPrintf("Clerk: %v, sendRequest() is called with %v\n", ck.clerkId, args)
 	for ck.config.Num == 0 {
-		// init config, not useful
+		// init config
 		ck.config = ck.sc.Query(-1)
 		if ck.config.Num == 0 {
 			time.Sleep(time.Duration(CHECKCONFIGTIMEOUT) * time.Millisecond)
@@ -130,20 +126,29 @@ func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
 				srv := ck.make_end(servernames[si])
 				servers = append(servers, srv)
 			}
-			reply = ck.sendToServers(args, servers)
-			if reply.WrongGroup {
-				time.Sleep(time.Duration(CHECKCONFIGTIMEOUT) * time.Millisecond)
-				// ask controler for the latest configuration.
-				ck.config = ck.sc.Query(-1)
-			} else {
-				// Succeeded
-				quit = true
-			}
+		} else {
+			log.Fatalf("Clerk Config %v doesn't have gid: %v\n", ck.config, gid)
 		}
+		reply = ck.sendToServers(args, servers)
+		if reply.WrongGroup {
+			// ask controler for the latest configuration.
+			ck.config = ck.sc.Query(-1)
+			TempDPrintf("Args: %v, sends to the wrong group: %v, get new config: %v\n", args, gid, ck.config)
+		} else {
+			// Succeeded
+			quit = true
+		}
+
 	}
 	return &reply
 }
 
+/*
+this function is identical to kvraft sendRequest,
+it sends request to the servers in a group
+when returns, it must be the case that the request is succeeded
+or the request sends to a wrong group
+*/
 func (ck *Clerk) sendToServers(args *RequestArgs, servers []*labrpc.ClientEnd) RequestReply {
 	quit := false
 	leaderId := mathRand.Intn(len(servers))
@@ -151,10 +156,10 @@ func (ck *Clerk) sendToServers(args *RequestArgs, servers []*labrpc.ClientEnd) R
 	for !quit {
 		tempReply := RequestReply{}
 		ok := servers[leaderId].Call("ShardKV.RequestHandler", args, &tempReply)
-		TempDPrintf("sendRequest() sent to %v, got tempReply: %v for args: %v\n", leaderId, tempReply, args)
+		TempDPrintf("sendToServers() sent to %v, got tempReply: %v for args: %v\n", leaderId, tempReply, args)
 		if !ok {
 			// failed server or network disconnection
-			TempDPrintf("sendRequest() sent to %v, got tempReply: %v for args: %v got disconnected\n", leaderId, tempReply, args)
+			TempDPrintf("sendToServers() sent to %v, got tempReply: %v for args: %v got disconnected\n", leaderId, tempReply, args)
 			leaderId = mathRand.Intn(len(servers))
 			continue
 		}
@@ -173,10 +178,10 @@ func (ck *Clerk) sendToServers(args *RequestArgs, servers []*labrpc.ClientEnd) R
 			if tempReply.SizeExceeded {
 				log.Fatalf("command is too large, max allowed command size is %v\n", MAXKVCOMMANDSIZE)
 			}
-			TempDPrintf("sendRequest() sent to leader %v, got tempReply: %v for args: %v not successful\n", leaderId, tempReply, args)
+			TempDPrintf("sendToServers() sent to leader %v, got tempReply: %v for args: %v not successful\n", leaderId, tempReply, args)
 			leaderId = mathRand.Intn(len(servers))
 		}
 	}
-	TempDPrintf("sendRequest() finishes with %v\n", reply)
+	TempDPrintf("sendToServers() finishes with %v\n", reply)
 	return reply
 }

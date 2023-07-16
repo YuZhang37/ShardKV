@@ -1,6 +1,7 @@
 package shardkv
 
 import (
+	"fmt"
 	"log"
 	"sync/atomic"
 	"time"
@@ -40,6 +41,8 @@ import (
 // for any long-running work.
 func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxRaftState int, gid int, ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.ClientEnd) *ShardKV {
 	labgob.Register(ShardKVCommand{})
+	labgob.Register(ConfigUpdateCommand{})
+	labgob.Register(TransmitShardCommand{})
 
 	skv := new(ShardKV)
 	skv.me = me
@@ -51,12 +54,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	skv.gid = gid
 
 	skv.controllerClerk = shardController.MakeClerk(ctrlers)
-	for {
-		skv.config = skv.controllerClerk.Query(-1)
-		if len(skv.config.Groups) != 0 {
-			break
-		}
-	}
+	skv.config = skv.controllerClerk.Query(-1)
 
 	skv.applyCh = make(chan raft.ApplyMsg)
 	skv.rf = raft.Make(servers, me, persister, skv.applyCh)
@@ -104,11 +102,13 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 
 	go skv.commandExecutor()
 	go skv.snapshotController()
+	go skv.configChecker()
+	// go skv.shadowShardInspector()
 	return skv
 }
 
 func (skv *ShardKV) RequestHandler(args *RequestArgs, reply *RequestReply) {
-	TempDPrintf("ShardKV: %v, RequestHandler() is called with %v\n", skv.me, args)
+	skv.tempDPrintf("GID: %v, ShardKV: %v, RequestHandler() is called with %v\n", skv.gid, skv.me, args)
 	if !skv.checkLeader(args, reply) {
 		return
 	}
@@ -123,7 +123,7 @@ func (skv *ShardKV) RequestHandler(args *RequestArgs, reply *RequestReply) {
 	clerkChan := make(chan RequestReply)
 	skv.clerkChans[args.Shard][args.ClerkId] = clerkChan
 	skv.shardLocks[args.Shard].Unlock()
-	raft.KVStoreDPrintf("Got command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
+	skv.tempDPrintf("Got command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
 	_, _, succeeded := skv.startCommit(*command)
 	if !succeeded {
 		return
@@ -134,13 +134,13 @@ func (skv *ShardKV) RequestHandler(args *RequestArgs, reply *RequestReply) {
 	delete(skv.clerkChans[args.Shard], args.ClerkId)
 	skv.shardLocks[args.Shard].Unlock()
 
-	TempDPrintf("RequestHandler() finishes with %v\n", reply)
+	skv.tempDPrintf("RequestHandler() finishes with %v\n", reply)
 }
 
 func (skv *ShardKV) checkLeader(args *RequestArgs, reply *RequestReply) bool {
 	leaderId, votedFor, term := skv.rf.GetLeaderId()
 	if votedFor != skv.me {
-		TempDPrintf("ShardKV: %v is not the leader. LeaderId: %v, votedFor: %v, term: %v\n", skv.me, leaderId, votedFor, term)
+		skv.tempDPrintf("ShardKV: %v is not the leader. LeaderId: %v, votedFor: %v, term: %v\n", skv.me, leaderId, votedFor, term)
 		return false
 	}
 	return true
@@ -159,7 +159,7 @@ func (skv *ShardKV) checkCachedReply(args *RequestArgs, reply *RequestReply) boo
 			if args.SeqNum == cachedReply.SeqNum {
 				// the previous reply is lost
 				skv.copyReply(&cachedReply, reply)
-				TempDPrintf("ShardKV: %v caches reply. Reply: %v\n", skv.me, cachedReply)
+				skv.tempDPrintf("ShardKV: %v caches reply. Reply: %v\n", skv.me, cachedReply)
 				return true
 			}
 			// args.SeqNum > cachedReply.SeqNum
@@ -199,6 +199,7 @@ func (skv *ShardKV) checkCommand(command interface{}) bool {
 }
 
 func (skv *ShardKV) startCommit(command interface{}) (int, int, bool) {
+	skv.tempDPrintf("startCommit receives command: %v\n", command)
 	quit := false
 	if !skv.checkCommand(command) {
 		log.Fatalf("expecting command to be type of ShardKVCommand, ConfigUpdateCommand, TransmitShardCommand, RemoveShardCommand!")
@@ -206,11 +207,12 @@ func (skv *ShardKV) startCommit(command interface{}) (int, int, bool) {
 	var appendIndex, appendTerm int
 	for !quit {
 		index, term, isLeader := skv.rf.Start(command)
+		skv.tempDPrintf("startCommit index: %v, term: %v, isLeader: %v, for Start command: %v\n", index, term, isLeader, command)
 		if !isLeader {
 			return -1, -1, false
 		}
 		if index > 0 {
-			raft.KVStoreDPrintf("Appended command: %v\n", command)
+			skv.tempDPrintf("Appended command: %v\n", command)
 			appendIndex = index
 			appendTerm = term
 			quit = true
@@ -226,8 +228,8 @@ func (skv *ShardKV) startCommit(command interface{}) (int, int, bool) {
 			if skv.killed() {
 				return -1, -1, false
 			}
-			TempDPrintf("ShardKV: %v the leader can't add new command: %v, LeaderId: %v\n", skv.me, command, skv.me)
-			raft.KVStoreDPrintf("skv.me: %v, retry index: %v, on command: %v", skv.me, index, command)
+			skv.tempDPrintf("ShardKV: %v the leader can't add new command: %v, LeaderId: %v\n", skv.me, command, skv.me)
+			skv.tempDPrintf("skv.me: %v, retry index: %v, on command: %v", skv.me, index, command)
 		}
 	}
 	return appendIndex, appendTerm, true
@@ -244,7 +246,7 @@ func (skv *ShardKV) waitReply(clerkChan chan RequestReply, args *RequestArgs, re
 			if tempReply.SeqNum == args.SeqNum {
 				skv.copyReply(&tempReply, reply)
 				quit = true
-				TempDPrintf("RequestHandler() succeeds with %v\n", reply)
+				skv.tempDPrintf("RequestHandler() succeeds with %v\n", reply)
 			}
 		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
 			isValidLeader := skv.rf.IsValidLeader()
@@ -268,6 +270,7 @@ func (skv *ShardKV) copyReply(from *RequestReply, to *RequestReply) {
 	to.SizeExceeded = from.SizeExceeded
 	to.Value = from.Value
 	to.Exists = from.Exists
+	to.ErrorMsg = from.ErrorMsg
 }
 
 // long-running thread for leader
@@ -290,18 +293,18 @@ func (skv *ShardKV) commandExecutor() {
 }
 
 func (skv *ShardKV) processCommand(commandIndex int, commandTerm int, commandFromRaft interface{}) {
-	TempDPrintf("ShardKV: %v, processCommand() is called with commandIndex: %v, commandTerm: %v, commandFromRaft: %v\n", skv.me, commandIndex, commandTerm, commandFromRaft)
+	skv.tempDPrintf("ShardKV: %v, processCommand() is called with commandIndex: %v, commandTerm: %v, commandFromRaft: %v\n", skv.me, commandIndex, commandTerm, commandFromRaft)
 	skv.mu.Lock()
 	defer skv.mu.Unlock()
 
 	// check command index and term
 	if commandIndex != skv.latestAppliedIndex+1 {
-		log.Fatalf("ShardKV: %v, expecting log index: %v, got %v", skv.me, skv.latestAppliedIndex+1, commandIndex)
+		log.Fatalf("Fatal: ShardKV: %v, expecting log index: %v, got %v", skv.me, skv.latestAppliedIndex+1, commandIndex)
 	} else {
 		skv.latestAppliedIndex++
 	}
 	if commandTerm < skv.latestAppliedTerm {
-		log.Fatalf("ShardKV: %v, expecting log term: >=%v, got %v", skv.me, skv.latestAppliedTerm, commandTerm)
+		log.Fatalf("Fatal: ShardKV: %v, expecting log term: >=%v, got %v", skv.me, skv.latestAppliedTerm, commandTerm)
 	} else {
 		skv.latestAppliedTerm = commandTerm
 	}
@@ -309,7 +312,14 @@ func (skv *ShardKV) processCommand(commandIndex int, commandTerm int, commandFro
 	// check command is Noop
 	noop, isNoop := commandFromRaft.(raft.Noop)
 	if isNoop {
-		TempDPrintf("ShardKV %v receives noop: %v\n", skv.me, noop)
+		skv.tempDPrintf("ShardKV %v receives noop: %v\n", skv.me, noop)
+		return
+	}
+
+	// check command is ConfigUpdateCommand
+	configUpdateCommand, isConfigUpdateCommand := commandFromRaft.(ConfigUpdateCommand)
+	if isConfigUpdateCommand {
+		skv.processConfigUpdateStatic(configUpdateCommand)
 		return
 	}
 
@@ -319,6 +329,7 @@ func (skv *ShardKV) processCommand(commandIndex int, commandTerm int, commandFro
 		log.Fatalf("ShardKV %v, expecting a ShardKVCommand: %v\n", skv.me, clientCommand)
 	}
 	skv.processClientRequest(clientCommand)
+	skv.tempDPrintf("ShardKV: %v, processCommand() finishes\n", skv.me)
 }
 
 /*
@@ -326,6 +337,7 @@ skv.shardLocks[command.Shard].Lock() is held
 and the skv serves command.Shard
 */
 func (skv *ShardKV) processClientRequest(command ShardKVCommand) {
+	skv.tempDPrintf("ShardKV: %v, processClientRequest() is called with command: %v\n", skv.me, command)
 	// check if the current group serves command or not
 	if !skv.checkServing(&command) {
 		return
@@ -349,7 +361,7 @@ func (skv *ShardKV) processClientRequest(command ShardKVCommand) {
 	// caching the latest reply for each client
 	// skv.cachedReplies[reply.ClerkId].SeqNum < reply.SeqNum
 	skv.cacheReply(&command, reply)
-	TempDPrintf("ShardKV: %v, processCommand() finishes with reply: %v\n", skv.me, reply)
+	skv.tempDPrintf("ShardKV: %v, processClientRequest() finishes with reply: %v\n", skv.me, reply)
 	go skv.sendReply(reply)
 }
 
@@ -388,9 +400,10 @@ func (skv *ShardKV) checkServing(command *ShardKVCommand) bool {
 	if skv.config.Shards[command.Shard] != skv.gid {
 		// current config doesn't serve command.Shard
 		// reply.Succeeded = false: the command is committed but not applied successfully
-		if skv.config.Num < command.Shard {
+		if skv.config.Num < command.ConfigNum {
 			reply = skv.getFakeReply(command)
 			reply.WaitForUpdate = true
+			reply.ErrorMsg = fmt.Sprintf("skv.config.Num: %v < command.ConfigNum: %v", skv.config.Num, command.ConfigNum)
 		} else {
 			// skv.config.Num > command.Shard
 			reply = skv.getFakeReply(command)
@@ -405,6 +418,8 @@ func (skv *ShardKV) checkServing(command *ShardKVCommand) bool {
 	if _, exists := skv.serveShardIDs[command.Shard]; !exists {
 		reply = skv.getFakeReply(command)
 		reply.WaitForUpdate = true
+		reply.ErrorMsg = "current config serves command.Shard, but serveMap may have not received the shard yet"
+		skv.tempDPrintf("WaitForUpdate: skv.Config: %v, skv.ShardIDs: %v, ")
 		go skv.sendReply(reply)
 		return false
 	}
@@ -422,7 +437,7 @@ func (skv *ShardKV) getFakeReply(command *ShardKVCommand) *RequestReply {
 }
 
 func (skv *ShardKV) sendReply(reply *RequestReply) {
-	TempDPrintf("ShardKV: %v, sends to: %v reply %v \n", skv.me, reply, reply.ClerkId)
+	skv.tempDPrintf("ShardKV: %v, sends to: %v reply %v \n", skv.me, reply, reply.ClerkId)
 
 	// check if the server is leader or not
 	isValidLeader := skv.rf.IsValidLeader()
@@ -479,6 +494,36 @@ func (skv *ShardKV) snapshotController() {
 			if skv.killed() {
 				quit = true
 			}
+		}
+	}
+}
+
+/*
+every CHECKTIMEOUT, this thread issues a Query(-1)
+if the resulting Config has larger configNum than skv.config
+then issues a MetaUpdateCommand
+*/
+func (skv *ShardKV) configChecker() {
+	skv.tempDPrintf("configChecker is running...")
+	for !skv.killed() {
+		time.Sleep(time.Duration(CHECKCONFIGTIMEOUT) * time.Millisecond)
+		newConfig := skv.controllerClerk.Query(-1)
+		skv.mu.Lock()
+		if newConfig.Num > skv.config.Num {
+			skv.tempDPrintf("configChecker get newConfig: %v, old config: %v\n", newConfig, skv.config)
+			// issue a command
+			command := ConfigUpdateCommand{
+				Operation: UPDATECONFIG,
+				Config:    newConfig,
+			}
+			skv.mu.Unlock()
+			if unsafe.Sizeof(command) >= MAXKVCOMMANDSIZE {
+				log.Fatalf("Fatal: command is too large, max allowed command size is %v\n", MAXKVCOMMANDSIZE)
+			}
+			skv.tempDPrintf("configChecker get newConfig: %v and issues ConfigUpdateCommand: %v\n", newConfig, command)
+			skv.startCommit(command)
+		} else {
+			skv.mu.Unlock()
 		}
 	}
 }

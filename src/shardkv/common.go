@@ -263,7 +263,8 @@ type RequestReply struct {
 	// only used for Get
 	Value string
 	// the key exists in kvStore, only used for get and append
-	Exists bool
+	Exists   bool
+	ErrorMsg string
 }
 
 /************** end of clerk-kvServer RPC definition **************/
