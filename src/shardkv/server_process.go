@@ -14,6 +14,14 @@ skv.mu is held for all function calls in this file
 
 func (skv *ShardKV) processConfigUpdateStatic(command ConfigUpdateCommand) {
 	skv.tempDPrintf("ShardKV %v receives ConfigUpdateCommand: %v\n", skv.me, command)
+	if command.Config.Num < 2 {
+		skv.tempDPrintf("Config with configNum: %v is not static, return\n", command.Config.Num)
+		return
+	}
+	if command.Config.Num <= skv.config.Num {
+		skv.tempDPrintf("Config with configNum: %v <= current config.Num: %v, return\n", command.Config.Num, skv.config.Num)
+		return
+	}
 	skv.config = command.Config
 	for shard, GID := range skv.config.Shards {
 		if GID == skv.gid {
@@ -33,6 +41,7 @@ func (skv *ShardKV) processConfigUpdateStatic(command ConfigUpdateCommand) {
 				Size:          0,
 				CachedReplies: make(map[int64]RequestReply),
 			})
+			// must lock, since the request handler can check cached replies
 			skv.serveCachedReplies[shard] = chunks
 		}
 	}

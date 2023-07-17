@@ -54,39 +54,17 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	skv.gid = gid
 
 	skv.controllerClerk = shardController.MakeClerk(ctrlers)
-	skv.config = skv.controllerClerk.Query(-1)
 
 	skv.applyCh = make(chan raft.ApplyMsg)
 	skv.rf = raft.Make(servers, me, persister, skv.applyCh)
 	skv.serveShardIDs = make(map[int]bool)
 	skv.serveShards = make(map[int][]ChunkKVStore)
-	for _, shard := range skv.config.Shards {
-		if shard == skv.gid {
-			chunks := make([]ChunkKVStore, 0)
-			chunks = append(chunks, ChunkKVStore{
-				Size:    0,
-				KVStore: make(map[string]string),
-			})
-			skv.serveShards[shard] = chunks
-			skv.serveShardIDs[shard] = true
-		}
-	}
 	skv.receivingShards = make(map[int][]ChunkKVStore)
 	skv.futureServeConfigNums = make(map[int]int)
 	skv.futureServeShards = make(map[int][]ChunkKVStore)
 	skv.shadowShardGroups = make([]ShadowShardGroup, 0)
 
 	skv.serveCachedReplies = make(map[int][]ChunkedCachedReply)
-	for _, shard := range skv.config.Shards {
-		if shard == skv.gid {
-			chunks := make([]ChunkedCachedReply, 0)
-			chunks = append(chunks, ChunkedCachedReply{
-				Size:          0,
-				CachedReplies: make(map[int64]RequestReply),
-			})
-			skv.serveCachedReplies[shard] = chunks
-		}
-	}
 	skv.receivingCachedReplies = make(map[int][]ChunkedCachedReply)
 	skv.futureCachedReplies = make(map[int][]ChunkedCachedReply)
 
@@ -147,8 +125,10 @@ func (skv *ShardKV) checkLeader(args *RequestArgs, reply *RequestReply) bool {
 }
 
 func (skv *ShardKV) checkCachedReply(args *RequestArgs, reply *RequestReply) bool {
-	skv.shardLocks[args.Shard].Lock()
-	defer skv.shardLocks[args.Shard].Unlock()
+	skv.mu.Lock()
+	defer skv.mu.Unlock()
+	// skv.shardLocks[args.Shard].Lock()
+	// defer skv.shardLocks[args.Shard].Unlock()
 	chunkedCachedReplies, exists := skv.serveCachedReplies[args.Shard]
 	if !exists {
 		return false
@@ -338,7 +318,7 @@ and the skv serves command.Shard
 */
 func (skv *ShardKV) processClientRequest(command ShardKVCommand) {
 	skv.tempDPrintf("ShardKV: %v, processClientRequest() is called with command: %v\n", skv.me, command)
-	// check if the current group serves command or not
+	// check if the current group serves command· or not
 	if !skv.checkServing(&command) {
 		return
 	}
@@ -520,7 +500,7 @@ func (skv *ShardKV) configChecker() {
 			if unsafe.Sizeof(command) >= MAXKVCOMMANDSIZE {
 				log.Fatalf("Fatal: command is too large, max allowed command size is %v\n", MAXKVCOMMANDSIZE)
 			}
-			skv.tempDPrintf("configChecker get newConfig: %v and issues ConfigUpdateCommand: %v\n", newConfig, command)
+			skv.tempDPrintf("configChecker for newConfig: %v and issues ConfigUpdateCommand: %v\n", newConfig, command)
 			skv.startCommit(command)
 		} else {
 			skv.mu.Unlock()
