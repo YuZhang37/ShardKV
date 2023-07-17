@@ -5,7 +5,7 @@ import (
 	"log"
 )
 
-const TempDebug = true
+const TempDebug = false
 const FollowerDebug = false
 const Temp2Debug = false
 

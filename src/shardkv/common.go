@@ -118,7 +118,8 @@ type ShardKV struct {
 	serveShards map[int][]ChunkKVStore
 	// does this field need to be persistent?
 	// need to be persistent, keep consistent with finishedTransmit
-	receivingShards       map[int][]ChunkKVStore
+	receivingShards map[int][]ChunkKVStore
+	// used with futureServeShards, to indicate when a shard in it needs to be processed
 	futureServeConfigNums map[int]int
 	futureServeShards     map[int][]ChunkKVStore
 

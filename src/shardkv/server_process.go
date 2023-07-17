@@ -245,9 +245,12 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 	} else {
 		skv.serveShardIDs = serveShardIDs
 		skv.serveShards = serveShards
+		skv.receivingShards = receivingShards
+		skv.futureServeConfigNums = futureServeConfigNums
 		skv.futureServeShards = futureServeShards
 		skv.shadowShardGroups = shadowShardGroups
 		skv.serveCachedReplies = serveCachedReplies
+		skv.receivingCachedReplies = receivingCachedReplies
 		skv.futureCachedReplies = futureCachedReplies
 		skv.finishedTransmit = finishedTransmit
 	}
@@ -259,47 +262,17 @@ must be called with skv.mu.Lock
 func (skv *ShardKV) encodeSnapshot() []byte {
 	writer := new(bytes.Buffer)
 	e := labgob.NewEncoder(writer)
-	encodeServeShardIDs := e.Encode(skv.serveShardIDs)
-	encodeServeShards := e.Encode(skv.serveShards)
-	encodeReceivingShards := e.Encode(skv.receivingShards)
-	encodeFutureServeConfigNums := e.Encode(skv.futureServeConfigNums)
-	encodeFutureServeShards := e.Encode(skv.futureServeShards)
-	encodeShadowShardGroups := e.Encode(skv.shadowShardGroups)
-	encodeServeCachedReplies := e.Encode(skv.serveCachedReplies)
-	encodeReceivingCachedReplies := e.Encode(skv.receivingCachedReplies)
-	encodeFutureCachedReplies := e.Encode(skv.futureCachedReplies)
-	encodeFinishedTransmit := e.Encode(skv.finishedTransmit)
-	if encodeServeShardIDs != nil ||
-		encodeServeShards != nil ||
-		encodeReceivingShards != nil ||
-		encodeFutureServeConfigNums != nil ||
-		encodeFutureServeShards != nil ||
-		encodeShadowShardGroups != nil ||
-		encodeServeCachedReplies != nil ||
-		encodeReceivingCachedReplies != nil ||
-		encodeFutureCachedReplies != nil ||
-		encodeFinishedTransmit != nil {
-		log.Fatalf(`Fatal: encodeSnapshot() in ShardKV encoding error!
-		encodeServeShardIDs: %v, 
-		encodeServeShards: %v, 
-		encodeReceivingShards: %v, 
-		encodeFutureServeConfigNums: %v, 
-		encodeFutureServeShards: %v, 
-		encodeShadowShardGroups: %v, 
-		encodeServeCachedReplies: %v, 
-		encodeReceivingCachedReplies: %v, 
-		encodeFutureCachedReplies: %v, 
-		encodeFinishedTransmit: %v \n`,
-			encodeServeShardIDs,
-			encodeServeShards,
-			encodeReceivingShards,
-			encodeFutureServeConfigNums,
-			encodeFutureServeShards,
-			encodeShadowShardGroups,
-			encodeServeCachedReplies,
-			encodeReceivingCachedReplies,
-			encodeFutureCachedReplies,
-			encodeFinishedTransmit)
+	if e.Encode(skv.serveShardIDs) != nil ||
+		e.Encode(skv.serveShards) != nil ||
+		e.Encode(skv.receivingShards) != nil ||
+		e.Encode(skv.futureServeConfigNums) != nil ||
+		e.Encode(skv.futureServeShards) != nil ||
+		e.Encode(skv.shadowShardGroups) != nil ||
+		e.Encode(skv.serveCachedReplies) != nil ||
+		e.Encode(skv.receivingCachedReplies) != nil ||
+		e.Encode(skv.futureCachedReplies) != nil ||
+		e.Encode(skv.finishedTransmit) != nil {
+		log.Fatalf("encoding error!\n")
 	}
 	data := writer.Bytes()
 	return data

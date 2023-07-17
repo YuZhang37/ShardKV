@@ -44,7 +44,7 @@ const DebugSnapshot2 = false
 const DebugKVStore = false
 const DebugCommitNoop = false
 const DebugShardController = false
-const DebugShardKV = true
+const DebugShardKV = false
 
 // const colorRed = "\033[0;31m"
 
