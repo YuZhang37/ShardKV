@@ -13,66 +13,24 @@ skv.mu is held for all function calls in this file
 */
 
 /*
-some infinite loops
-The root cause:
-the group contacts the controller at 1,
-and creates a new config at 2,
-it gets all the uninitialized shards,
-but currently we don't support moving shards
-
-*/
-
-func (skv *ShardKV) processConfigUpdateStatic(command ConfigUpdateCommand) {
-	skv.tempDPrintf("ShardKV %v receives ConfigUpdateCommand: %v\n", skv.me, command)
-	if command.Config.Num < 2 {
-		skv.tempDPrintf("Config with configNum: %v is not static, return\n", command.Config.Num)
-		return
-	}
-	if command.Config.Num <= skv.config.Num {
-		skv.tempDPrintf("Config with configNum: %v <= current config.Num: %v, return\n", command.Config.Num, skv.config.Num)
-		return
-	}
-	skv.tempDPrintf("ShardKV %v initializing for ConfigUpdateCommand: %v\n", skv.me, command)
-	skv.config = command.Config
-	for _, shard := range skv.config.AssignedShards {
-		chunks := make([]ChunkKVStore, 0)
-		chunks = append(chunks, ChunkKVStore{
-			Size:    0,
-			KVStore: make(map[string]string),
-		})
-		skv.serveShards[shard] = chunks
-		skv.serveShardIDs[shard] = true
-	}
-	for _, shard := range skv.config.AssignedShards {
-		chunks := make([]ChunkedCachedReply, 0)
-		chunks = append(chunks, ChunkedCachedReply{
-			Size:          0,
-			CachedReplies: make(map[int64]RequestReply),
-		})
-		// must lock, since the request handler can check cached replies
-		skv.serveCachedReplies[shard] = chunks
-	}
-	skv.tempDPrintf("skv.config: %v, skv.serveShards: %v, skv.serveShardIDs: %v, skv.serveCachedReplies: %v\n", skv.config, skv.serveShards, skv.serveShardIDs, skv.serveCachedReplies)
-	skv.tempDPrintf("ShardKV %v finishes ConfigUpdateCommand: %v\n", skv.me, command)
-}
-
-/*
 when updating config,
 shards in serveShards which are no longer served will be moved to shadow
 shards in futureShards for which the current config.Num >= its config.Num, will be inspected to move to serve or shadow
 */
 
-/*
-send from group 0 to the current group?
-controller needs to tell the server request not the client request
-that this is the very first request it sends and the the server needs to pick shards from group 0
-*/
-
 func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
+	skv.tempDPrintf("ShardKV %v receives ConfigUpdateCommand: %v\n", skv.me, command)
 	if command.Config.Num <= skv.config.Num {
+		skv.tempDPrintf("Config with configNum: %v <= current config.Num: %v, return\n", command.Config.Num, skv.config.Num)
 		return
 	}
+	skv.controllerSeqNum = skv.controllerSeqNum + 1
 	skv.config = command.Config
+	if len(skv.config.AssignedShards) > 0 {
+		skv.tempDPrintf("ShardKV %v initializing for ConfigUpdateCommand: %v\n", skv.me, command)
+		skv.initializeShardsFromConfig()
+		skv.tempDPrintf("ShardKV %v finishes ConfigUpdateCommand: %v\n", skv.me, command)
+	}
 	for shard := range skv.serveShardIDs {
 		if skv.config.Shards[shard] != skv.gid {
 			delete(skv.serveShardIDs, shard)
@@ -100,6 +58,27 @@ func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
 		}
 	}
 }
+func (skv *ShardKV) initializeShardsFromConfig() {
+	for _, shard := range skv.config.AssignedShards {
+		chunks := make([]ChunkKVStore, 0)
+		chunks = append(chunks, ChunkKVStore{
+			Size:    0,
+			KVStore: make(map[string]string),
+		})
+		skv.serveShards[shard] = chunks
+		skv.serveShardIDs[shard] = true
+	}
+	for _, shard := range skv.config.AssignedShards {
+		chunks := make([]ChunkedCachedReply, 0)
+		chunks = append(chunks, ChunkedCachedReply{
+			Size:          0,
+			CachedReplies: make(map[int64]RequestReply),
+		})
+		// must lock, since the request handler can check cached replies
+		skv.serveCachedReplies[shard] = chunks
+	}
+	skv.tempDPrintf("skv.config: %v, skv.serveShards: %v, skv.serveShardIDs: %v, skv.serveCachedReplies: %v\n", skv.config, skv.serveShards, skv.serveShardIDs, skv.serveCachedReplies)
+}
 
 /*
 KVData is saved in receivingShards
@@ -109,6 +88,7 @@ both, the receiver will need to forward the received
 */
 
 func (skv *ShardKV) processTransmitShard(command TransmitShardCommand) {
+	skv.moveShardDPrintf("processTransmitShard() receives TransmitShardCommand: %v\n", command)
 	skv.shardLocks[command.Shard].Lock()
 	defer skv.shardLocks[command.Shard].Unlock()
 	if command.IsKVData {
@@ -139,11 +119,77 @@ func (skv *ShardKV) processTransmitShard(command TransmitShardCommand) {
 	} else {
 		transmit.ChunkNum = command.ChunkNum
 	}
+	skv.moveShardDPrintf("processTransmitShard() updates: \n skv.receivingShards(size %v): %v,\n skv.receivingCachedReplies (size %v): %v,\n skv.finishedTransmit (size %v): %v\n", len(skv.receivingShards), skv.receivingShards, len(skv.receivingCachedReplies), skv.receivingCachedReplies, len(skv.finishedTransmit), skv.finishedTransmit)
 	// the transmit request handler can poll finishedTransmit to find out if the command has been applied or not
 
 	if command.IsLastChunk {
 		skv.forwardReceivingChunks(command.ConfigNum, command.Shard)
 	}
+	skv.moveShardDPrintf("processTransmitShard() finishes TransmitShardCommand: %v\n", command)
+}
+
+// skv.mu and shardLocks[shard] are held
+func (skv *ShardKV) forwardReceivingChunks(configNum int, shard int) {
+	skv.moveShardDPrintf("forwardReceivingChunks() receives configNum: %v, shard: %v\n", configNum, shard)
+	if configNum == skv.config.Num {
+		skv.moveShardDPrintf("In forwardReceivingChunks() configNum: %v == skv.config.Num: %v, move from receiving to serve\n", configNum, skv.config.Num)
+		skv.serveShardIDs[shard] = true
+		skv.serveShards[shard] = skv.receivingShards[shard]
+		skv.serveCachedReplies[shard] = skv.receivingCachedReplies[shard]
+	} else if configNum > skv.config.Num {
+		skv.moveShardDPrintf("In forwardReceivingChunks() configNum: %v > skv.config.Num: %v, move from receiving to future\n", configNum, skv.config.Num)
+		skv.futureServeShards[shard] = skv.receivingShards[shard]
+		skv.futureCachedReplies[shard] = skv.receivingCachedReplies[shard]
+		skv.futureServeConfigNums[shard] = configNum
+	} else {
+		// configNum < skv.config.Num
+		if skv.config.Shards[shard] == skv.gid {
+			skv.moveShardDPrintf("In forwardReceivingChunks() configNum: %v < skv.config.Num: %v, but currently serve shard: %v, move from receiving to serve\n", configNum, skv.config.Num, shard)
+			skv.serveShardIDs[shard] = true
+			skv.serveShards[shard] = skv.receivingShards[shard]
+			skv.serveCachedReplies[shard] = skv.receivingCachedReplies[shard]
+		} else {
+			skv.moveShardDPrintf("In forwardReceivingChunks() configNum: %v < skv.config.Num: %v, doesn't serve shard: %v, move from receiving to shadow\n", configNum, skv.config.Num, shard)
+			// move shard to shadow
+			skv.moveShardToShadow(shard, skv.receivingShards, skv.receivingCachedReplies)
+		}
+	}
+	skv.moveShardDPrintf("forwardReceivingChunks() finishes configNum: %v, shard: %v\n", configNum, shard)
+}
+
+// skv.mu and shardLocks[shard] are held
+// skv.shardLocks[shard] needs to be held
+func (skv *ShardKV) moveShardToShadow(shard int, sourceShards map[int][]ChunkKVStore, sourceCachedReplies map[int][]ChunkedCachedReply) {
+	skv.moveShardDPrintf("moveShardToShadow() receives shard: %v, sourceShards: %v, sourceCachedReplies: %v\n", shard, sourceShards, sourceCachedReplies)
+	targetGID := skv.config.Shards[shard]
+	var group *ShadowShardGroup = nil
+	for _, tempGroup := range skv.shadowShardGroups {
+		if tempGroup.TargetGID == targetGID {
+			group = &tempGroup
+			break
+		}
+	}
+	if group == nil {
+		servernames := make([]string, 0)
+		servernames = append(servernames, skv.config.Groups[targetGID]...)
+		group = &ShadowShardGroup{
+			TargetGID:           targetGID,
+			Servernames:         servernames,
+			ShardIDs:            make([]int, 0),
+			ConfigNums:          make([]int, 0),
+			ShadowShards:        make([][]ChunkKVStore, 0),
+			ShadowCachedReplies: make([][]ChunkedCachedReply, 0),
+		}
+	}
+	skv.moveShardDPrintf("moveShardToShadow() gets group for shard: %v: %v\n", shard, group)
+	group.ShardIDs = append(group.ShardIDs, shard)
+	group.ConfigNums = append(group.ConfigNums, skv.config.Num)
+	group.ShadowShards = append(group.ShadowShards, sourceShards[shard])
+	group.ShadowCachedReplies = append(group.ShadowCachedReplies, sourceCachedReplies[shard])
+	skv.moveShardDPrintf("moveShardToShadow() updates group for shard: %v: %v\n", shard, group)
+	delete(sourceShards, shard)
+	delete(sourceCachedReplies, shard)
+	skv.moveShardDPrintf("moveShardToShadow() finishes shard: %v, sourceShards: %v, sourceCachedReplies: %v\n", shard, sourceShards, sourceCachedReplies)
 }
 
 /*
@@ -281,6 +327,8 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 		receivingCachedReplies map[int][]ChunkedCachedReply
 		futureCachedReplies    map[int][]ChunkedCachedReply
 		finishedTransmit       map[int]TransmitInfo
+
+		controllerSeqNum int
 	)
 
 	if d.Decode(&serveShardIDs) != nil ||
@@ -292,7 +340,8 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 		d.Decode(&serveCachedReplies) != nil ||
 		d.Decode(&receivingCachedReplies) != nil ||
 		d.Decode(&futureCachedReplies) != nil ||
-		d.Decode(&finishedTransmit) != nil {
+		d.Decode(&finishedTransmit) != nil ||
+		d.Decode(&controllerSeqNum) != nil {
 		log.Fatalf("Fatal: decoding error!\n")
 	} else {
 		skv.serveShardIDs = serveShardIDs
@@ -305,6 +354,7 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 		skv.receivingCachedReplies = receivingCachedReplies
 		skv.futureCachedReplies = futureCachedReplies
 		skv.finishedTransmit = finishedTransmit
+		skv.controllerSeqNum = int64(controllerSeqNum)
 	}
 }
 
@@ -323,7 +373,8 @@ func (skv *ShardKV) encodeSnapshot() []byte {
 		e.Encode(skv.serveCachedReplies) != nil ||
 		e.Encode(skv.receivingCachedReplies) != nil ||
 		e.Encode(skv.futureCachedReplies) != nil ||
-		e.Encode(skv.finishedTransmit) != nil {
+		e.Encode(skv.finishedTransmit) != nil ||
+		e.Encode(skv.controllerSeqNum) != nil {
 		log.Fatalf("encoding error!\n")
 	}
 	data := writer.Bytes()

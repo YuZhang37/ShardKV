@@ -54,6 +54,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	skv.gid = gid
 
 	skv.controllerClerk = shardController.MakeQueryClerk(ctrlers, skv.gid, int64(skv.gid))
+	skv.controllerSeqNum = 1
 
 	skv.applyCh = make(chan raft.ApplyMsg)
 	skv.rf = raft.Make(servers, me, persister, skv.applyCh)
@@ -299,7 +300,14 @@ func (skv *ShardKV) processCommand(commandIndex int, commandTerm int, commandFro
 	// check command is ConfigUpdateCommand
 	configUpdateCommand, isConfigUpdateCommand := commandFromRaft.(ConfigUpdateCommand)
 	if isConfigUpdateCommand {
-		skv.processConfigUpdateStatic(configUpdateCommand)
+		skv.processConfigUpdate(configUpdateCommand)
+		return
+	}
+
+	// check command is TransmitShardCommand
+	transmitShardCommand, isTransmitShardCommand := commandFromRaft.(TransmitShardCommand)
+	if isTransmitShardCommand {
+		skv.processTransmitShard(transmitShardCommand)
 		return
 	}
 
@@ -494,8 +502,10 @@ func (skv *ShardKV) configChecker() {
 		}
 		// no need to lock,
 		// seqNum is incremented when applying, the controller should not cache the query
-		skv.controllerSeqNum = skv.controllerSeqNum + 1
-		newConfig := skv.controllerClerk.QueryWithSeqNum(-1, skv.controllerSeqNum)
+		skv.mu.Lock()
+		controllerSeqNum := skv.controllerSeqNum
+		skv.mu.Unlock()
+		newConfig := skv.controllerClerk.QueryWithSeqNum(-1, controllerSeqNum)
 		skv.mu.Lock()
 		skv.tempDPrintf("configChecker queries newConfig: %v, old config: %v\n", newConfig, skv.config)
 		if newConfig.Num > skv.config.Num {
@@ -522,21 +532,27 @@ the shards moved to the same group needs to be in order
 */
 func (skv *ShardKV) shadowShardInspector() {
 	// inspect all shadowed groups and initiate moveShard command
+	skv.moveShardDPrintf("shadowShardInspector is running...")
 	quit := false
 	for !quit {
 		time.Sleep(time.Duration(INSPECTSHADOWTIMEOUT) * time.Millisecond)
+		isValidLeader := skv.rf.IsValidLeader()
+		if !isValidLeader {
+			continue
+		}
 		skv.mu.Lock()
-		defer skv.mu.Lock()
 		for _, group := range skv.shadowShardGroups {
 			if !group.Processing {
+				skv.moveShardDPrintf("shadowShardInspector gets a shardGroup with no thread processing: %v\n", group)
 				go skv.transmitToGroup(group)
 			}
 			group.Processing = true
 		}
-		isValidLeader := skv.rf.IsValidLeader()
-		if skv.killed() || !isValidLeader {
+
+		if skv.killed() {
 			quit = true
 		}
+		skv.mu.Unlock()
 	}
 }
 

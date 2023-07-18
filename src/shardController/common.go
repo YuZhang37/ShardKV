@@ -160,6 +160,9 @@ type ControllerReply struct {
 	ErrorCode int
 	// join and leave
 	ErrorMessage string
+
+	// for group query request without assignment for shard initialization
+	NoCached bool
 }
 
 /************ end of clerk-controller RPC definition *************/

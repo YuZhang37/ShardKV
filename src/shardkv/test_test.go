@@ -100,7 +100,9 @@ func TestJoinLeave(t *testing.T) {
 
 	ck := cfg.makeClient()
 
+	Temp2DPrintf("before cfg.join(0)")
 	cfg.join(0)
+	Temp2DPrintf("cfg.join(0)")
 
 	n := 10
 	ka := make([]string, n)
@@ -115,6 +117,7 @@ func TestJoinLeave(t *testing.T) {
 	}
 
 	cfg.join(1)
+	Temp2DPrintf("cfg.join(1)")
 
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
@@ -123,7 +126,9 @@ func TestJoinLeave(t *testing.T) {
 		va[i] += x
 	}
 
+	Temp2DPrintf("before cfg.leave(0)")
 	cfg.leave(0)
+	Temp2DPrintf("cfg.leave(0)")
 
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
@@ -134,6 +139,7 @@ func TestJoinLeave(t *testing.T) {
 
 	// allow time for shards to transfer.
 	time.Sleep(1 * time.Second)
+	Temp2DPrintf("time.Sleep(1 * time.Second)")
 
 	cfg.checklogs()
 	cfg.ShutdownGroup(0)

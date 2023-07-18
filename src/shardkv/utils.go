@@ -5,9 +5,12 @@ import (
 	"log"
 )
 
-const TempDebug = false
+const TempDebug = true
+const MoveShardDebug = true
+const TransmitSenderDebug = true
+const TransmitHandlerDebug = true
 const FollowerDebug = false
-const Temp2Debug = false
+const Temp2Debug = true
 
 func (skv *ShardKV) tempDPrintf(format string, a ...interface{}) (n int, err error) {
 	_, votedFor, _ := skv.rf.GetLeaderId()
@@ -17,6 +20,34 @@ func (skv *ShardKV) tempDPrintf(format string, a ...interface{}) (n int, err err
 	}
 	return
 }
+
+func (skv *ShardKV) transmitSenderDPrintf(format string, a ...interface{}) (n int, err error) {
+	_, votedFor, _ := skv.rf.GetLeaderId()
+	if TransmitSenderDebug && (votedFor == skv.me || FollowerDebug) {
+		prefix := fmt.Sprintf("Group: %v: ShardKVServer: %v ", skv.gid, skv.me)
+		log.Printf(prefix+format, a...)
+	}
+	return
+}
+
+func (skv *ShardKV) transmitHandlerDPrintf(format string, a ...interface{}) (n int, err error) {
+	_, votedFor, _ := skv.rf.GetLeaderId()
+	if TransmitHandlerDebug && (votedFor == skv.me || FollowerDebug) {
+		prefix := fmt.Sprintf("Group: %v: ShardKVServer: %v ", skv.gid, skv.me)
+		log.Printf(prefix+format, a...)
+	}
+	return
+}
+
+func (skv *ShardKV) moveShardDPrintf(format string, a ...interface{}) (n int, err error) {
+	_, votedFor, _ := skv.rf.GetLeaderId()
+	if MoveShardDebug && (votedFor == skv.me || FollowerDebug) {
+		prefix := fmt.Sprintf("Group: %v: ShardKVServer: %v ", skv.gid, skv.me)
+		log.Printf(prefix+format, a...)
+	}
+	return
+}
+
 func TempDPrintf(format string, a ...interface{}) (n int, err error) {
 	if TempDebug {
 		log.Printf(format, a...)

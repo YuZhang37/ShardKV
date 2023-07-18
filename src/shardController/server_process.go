@@ -170,7 +170,7 @@ func (sc *ShardController) processQuery(command ControllerCommand) *ControllerRe
 	}
 	if command.FromGroup == -1 {
 		// the query is from client
-		sc.processPrintf(false, "Query0", command, reply)
+		sc.processPrintf(false, "Query From Client", command, reply)
 		return &reply
 	}
 
@@ -183,7 +183,8 @@ func (sc *ShardController) processQuery(command ControllerCommand) *ControllerRe
 	}
 	if len(AssignedShards) == 0 {
 		// the query is from servers, but currently no unassigned shards for this group
-		sc.processPrintf(false, "Query1", command, reply)
+		reply.NoCached = true
+		sc.processPrintf(false, "Query From Server No Assignment", command, reply)
 		return &reply
 	}
 	// shards in AssignedShards has been removed
@@ -195,6 +196,6 @@ func (sc *ShardController) processQuery(command ControllerCommand) *ControllerRe
 	nextConfig.Operation = fmt.Sprintf("operation: %v", command)
 	sc.configs = append(sc.configs, *nextConfig)
 	reply.Config.AssignedShards = AssignedShards
-	sc.processPrintf(false, "Query2", command, reply)
+	sc.processPrintf(false, "Query From Server With Assignment", command, reply)
 	return &reply
 }

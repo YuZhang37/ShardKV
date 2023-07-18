@@ -211,6 +211,8 @@ func (sc *ShardController) processCommand(commandIndex int, commandTerm int, com
 	if !isControllerCommand {
 		log.Fatalf("ShardController %v, expecting a ControllerCommand: %v\n", sc.me, command)
 	}
+	// if sc.cachedReplies doesn't contain command.ClerkId, it will
+	// return zero-ed RequestReply, SeqNum is 0
 	if sc.cachedReplies[command.ClerkId].SeqNum == command.SeqNum {
 		// drop the duplicated commands
 		// if the client doesn't send request one by one, can't
@@ -243,6 +245,9 @@ func (sc *ShardController) processCommand(commandIndex int, commandTerm int, com
 	// caching the latest reply for each client
 	// sc.cachedReplies[reply.ClerkId].SeqNum < reply.SeqNum
 	sc.cachedReplies[reply.ClerkId] = *reply
+	if reply.NoCached {
+		delete(sc.cachedReplies, reply.ClerkId)
+	}
 	sc.tempDPrintf("ShardController %v, processCommand() finishes with reply: %v\n", sc.me, reply)
 	go sc.sendReply(reply)
 }
@@ -396,6 +401,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 // all Shards are managed by group 0, which has no servers
 func (sc *ShardController) initConfig(num int) {
 	config := innerConfig{}
+	config.Operation = "Initialization"
 	config.Num = num
 	config.Groups = make(map[int][]string)
 	config.ServerNames = make(map[string]int)
