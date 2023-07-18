@@ -348,12 +348,12 @@ func (skv *ShardKV) processClientRequest(command ShardKVCommand) {
 
 	// caching the latest reply for each client
 	// skv.cachedReplies[reply.ClerkId].SeqNum < reply.SeqNum
-	skv.cacheReply(&command, reply)
+	skv.cacheClientRequestReply(&command, reply)
 	skv.tempDPrintf("ShardKV: %v, processClientRequest() finishes with reply: %v\n", skv.me, reply)
 	go skv.sendReply(reply)
 }
 
-func (skv *ShardKV) cacheReply(command *ShardKVCommand, reply *RequestReply) {
+func (skv *ShardKV) cacheClientRequestReply(command *ShardKVCommand, reply *RequestReply) {
 	for _, chunk := range skv.serveCachedReplies[command.Shard] {
 		if _, exists := chunk.CachedReplies[command.ClerkId]; exists {
 			chunk.Size -= unsafe.Sizeof(chunk.CachedReplies[command.ClerkId]) - unsafe.Sizeof(command.ClerkId)

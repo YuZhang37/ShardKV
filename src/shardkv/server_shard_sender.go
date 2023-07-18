@@ -31,55 +31,60 @@ send ACK requests
 */
 
 func (skv *ShardKV) transmitToGroup(group ShadowShardGroup) {
+	skv.transmitSenderDPrintf("transmitToGroup() receives group: %v\n", group)
 	// no currency on read/write a group
 	var servers []*labrpc.ClientEnd
 	for si := 0; si < len(group.Servernames); si++ {
 		srv := skv.make_end(group.Servernames[si])
 		servers = append(servers, srv)
 	}
-	chunkNum := 0
+
 	for len(group.ShardIDs) > 0 && !skv.killed() {
 		shard := group.ShardIDs[0]
+		transmitNum := group.TransmitNums[0]
 		configNum := group.ConfigNums[0]
 		shardChunks := group.ShadowShards[0]
-		for i := 0; i < len(shardChunks); i++ {
-			chunk := shardChunks[i]
-			chunkNum++
+		skv.transmitSenderDPrintf("transmitToGroup() sends shardKV data: shard: %v, transmitNum: %v, configNum: %v, shardChunks: %v\n", shard, transmitNum, configNum, shardChunks)
+		for chunkNum := 0; chunkNum < len(shardChunks); chunkNum++ {
+			chunk := shardChunks[chunkNum]
 			args := &TransmitShardArgs{
 				Operation:   TRANSMITSHARD,
-				TransmitNum: group.TransmitNum,
+				TransmitNum: transmitNum,
 				ChunkNum:    chunkNum,
 				IsKVData:    true,
 				GID:         group.TargetGID,
 				ConfigNum:   configNum,
 				Shard:       shard,
 				ShardChunk:  chunk.KVStore,
-				IsLastChunk: i == len(shardChunks)-1,
+				IsLastChunk: false,
 			}
 			skv.sendRequestToServers(args, servers)
 		}
+
 		replyChunks := group.ShadowCachedReplies[0]
-		for i := 0; i < len(replyChunks); i++ {
+		skv.transmitSenderDPrintf("transmitToGroup() sends shardKV replies: shard: %v, transmitNum: %v, configNum: %v, replyChunks: %v\n", shard, transmitNum, configNum, replyChunks)
+		for i := len(shardChunks); i < len(replyChunks); i++ {
 			chunk := replyChunks[i]
-			chunkNum++
 			args := &TransmitShardArgs{
 				Operation:   TRANSMITSHARD,
-				TransmitNum: group.TransmitNum,
-				ChunkNum:    chunkNum,
+				TransmitNum: transmitNum,
+				ChunkNum:    i + len(shardChunks),
 				IsKVData:    false,
 				GID:         group.TargetGID,
 				ConfigNum:   configNum,
 				Shard:       shard,
 				ReplyChunk:  chunk.CachedReplies,
-				IsLastChunk: i == len(shardChunks)-1,
+				IsLastChunk: i == len(replyChunks)-1,
 			}
 			skv.sendRequestToServers(args, servers)
 		}
+		skv.transmitSenderDPrintf("transmitToGroup() finishes shard: %v in group of GID: %v\n", shard, group.TargetGID)
 		skv.removeShardFromShadow(group.TargetGID, shard)
 	}
 }
 
 func (skv *ShardKV) sendRequestToServers(args *TransmitShardArgs, servers []*labrpc.ClientEnd) {
+	skv.transmitSenderDPrintf("sendRequestToServers() receives args: %v\n", args)
 	var reply *TransmitShardReply = nil
 	for reply == nil && !skv.killed() {
 		for si := 0; si < len(servers); si++ {
@@ -101,33 +106,39 @@ func (skv *ShardKV) sendRequestToServers(args *TransmitShardArgs, servers []*lab
 		}
 		time.Sleep(time.Duration(RETRYTRANSMITTIMEOUT) * time.Millisecond)
 	}
-	TempDPrintf("sendRequest() finishes with %v\n", reply)
+	skv.transmitSenderDPrintf("sendRequestToServers() finishes with reply: %v\n", reply)
 }
 
 func (skv *ShardKV) removeShardFromShadow(targetGID int, shard int) {
+	skv.transmitSenderDPrintf("removeShardFromShadow() receives targetGID: %v, shard: %v\n", targetGID, shard)
+	skv.mu.Lock()
+	defer skv.mu.Unlock()
 	var index int
 	var group ShadowShardGroup
 	var found bool = false
 	for index, group = range skv.shadowShardGroups {
 		if group.TargetGID == targetGID {
+			skv.transmitSenderDPrintf("removeShardFromShadow() before removing group: %v\n", group)
 			found = true
 			if len(group.ShardIDs) == 0 {
-				log.Fatalf("remove shard %v from group %v error: len(group.Shards) == 0\n", shard, targetGID)
+				log.Fatalf("Fatal: remove shard %v from group %v error: len(group.Shards) == 0\n", shard, targetGID)
 			}
 			if group.ShardIDs[0] != shard {
-				log.Fatalf("remove shard %v from group %v error: group.Shards[0]: %v != command.Shard\n", shard, targetGID, group.ShardIDs[0])
+				log.Fatalf("Fatal: remove shard %v from group %v error: group.Shards[0]: %v != command.Shard\n", shard, targetGID, group.ShardIDs[0])
 			}
 			group.ShardIDs = group.ShardIDs[1:]
 			group.ShadowShards = group.ShadowShards[1:]
 			group.ShadowCachedReplies = group.ShadowCachedReplies[1:]
+			skv.transmitSenderDPrintf("removeShardFromShadow() after removing group: %v\n", group)
 		}
 	}
 	if !found {
-		log.Fatalf("remove shard %v from group %v error: not found group\n", shard, targetGID)
+		log.Fatalf("Fatal: remove shard %v from group %v error: not found group\n", shard, targetGID)
 	}
 	if len(group.ShardIDs) == 0 {
 		newGroups := skv.shadowShardGroups[:index]
 		newGroups = append(newGroups, skv.shadowShardGroups[index:]...)
 		skv.shadowShardGroups = newGroups
 	}
+	skv.transmitSenderDPrintf("removeShardFromShadow() finishes targetGID: %v, shard: %v\n", targetGID, shard)
 }

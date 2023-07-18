@@ -64,12 +64,12 @@ type Clerk struct {
 for the send end
 */
 type ShadowShardGroup struct {
-	TargetGID   int
-	Servernames []string
-	TransmitNum int
-	ShardIDs    []int
-	ConfigNums  []int
-	Processing  bool
+	TargetGID    int
+	Servernames  []string
+	ShardIDs     []int
+	TransmitNums []int
+	ConfigNums   []int
+	Processing   bool
 
 	// when a shard finishes the move, issue a new command to remove that shard from shadowShards
 	// pitfall: the server may sending this shard when this shard is moved, the send thread needs to check if the shard still exists, if not, stop sending and treat it as the sending is finished and remove the shard from group
@@ -107,6 +107,9 @@ type ShardKV struct {
 
 	applyCh chan raft.ApplyMsg
 	rf      *raft.Raft
+
+	// global transmit number, per one for each shadow shard, monotonically increasing
+	transmitNum int
 
 	// shard -> mutex
 	shardLocks [shardController.NShards]sync.Mutex

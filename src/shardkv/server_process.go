@@ -3,6 +3,7 @@ package shardkv
 import (
 	"bytes"
 	"log"
+	"sort"
 	"unsafe"
 
 	"6.5840/labgob"
@@ -31,10 +32,13 @@ func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
 		skv.initializeShardsFromConfig()
 		skv.tempDPrintf("ShardKV %v finishes ConfigUpdateCommand: %v\n", skv.me, command)
 	}
-	for shard := range skv.serveShardIDs {
+	sortedShards := skv.sortedKeys(skv.serveShardIDs)
+	for shard := range sortedShards {
 		if skv.config.Shards[shard] != skv.gid {
+			skv.shardLocks[shard].Lock()
 			delete(skv.serveShardIDs, shard)
 			skv.moveShardToShadow(shard, skv.serveShards, skv.serveCachedReplies)
+			skv.shardLocks[shard].Unlock()
 		}
 	}
 	for shard, configNum := range skv.futureServeConfigNums {
@@ -58,6 +62,16 @@ func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
 		}
 	}
 }
+
+func (skv *ShardKV) sortedKeys(groups map[int]bool) []int {
+	keys := make([]int, 0)
+	for key := range groups {
+		keys = append(keys, key)
+	}
+	sort.Ints(keys)
+	return keys
+}
+
 func (skv *ShardKV) initializeShardsFromConfig() {
 	for _, shard := range skv.config.AssignedShards {
 		chunks := make([]ChunkKVStore, 0)
@@ -117,6 +131,9 @@ func (skv *ShardKV) processTransmitShard(command TransmitShardCommand) {
 			ChunkNum:    command.ChunkNum,
 		}
 	} else {
+		// if the command is executed, the command has the latest TransmitNum and ChunkNum
+		transmit.FromGID = command.GID
+		transmit.TransmitNum = command.TransmitNum
 		transmit.ChunkNum = command.ChunkNum
 	}
 	skv.moveShardDPrintf("processTransmitShard() updates: \n skv.receivingShards(size %v): %v,\n skv.receivingCachedReplies (size %v): %v,\n skv.finishedTransmit (size %v): %v\n", len(skv.receivingShards), skv.receivingShards, len(skv.receivingCachedReplies), skv.receivingCachedReplies, len(skv.finishedTransmit), skv.finishedTransmit)
@@ -161,6 +178,8 @@ func (skv *ShardKV) forwardReceivingChunks(configNum int, shard int) {
 // skv.shardLocks[shard] needs to be held
 func (skv *ShardKV) moveShardToShadow(shard int, sourceShards map[int][]ChunkKVStore, sourceCachedReplies map[int][]ChunkedCachedReply) {
 	skv.moveShardDPrintf("moveShardToShadow() receives shard: %v, sourceShards: %v, sourceCachedReplies: %v\n", shard, sourceShards, sourceCachedReplies)
+
+	skv.transmitNum++
 	targetGID := skv.config.Shards[shard]
 	var group *ShadowShardGroup = nil
 	for _, tempGroup := range skv.shadowShardGroups {
@@ -176,6 +195,7 @@ func (skv *ShardKV) moveShardToShadow(shard int, sourceShards map[int][]ChunkKVS
 			TargetGID:           targetGID,
 			Servernames:         servernames,
 			ShardIDs:            make([]int, 0),
+			TransmitNums:        make([]int, 0),
 			ConfigNums:          make([]int, 0),
 			ShadowShards:        make([][]ChunkKVStore, 0),
 			ShadowCachedReplies: make([][]ChunkedCachedReply, 0),
@@ -183,6 +203,7 @@ func (skv *ShardKV) moveShardToShadow(shard int, sourceShards map[int][]ChunkKVS
 	}
 	skv.moveShardDPrintf("moveShardToShadow() gets group for shard: %v: %v\n", shard, group)
 	group.ShardIDs = append(group.ShardIDs, shard)
+	group.TransmitNums = append(group.TransmitNums, skv.transmitNum)
 	group.ConfigNums = append(group.ConfigNums, skv.config.Num)
 	group.ShadowShards = append(group.ShadowShards, sourceShards[shard])
 	group.ShadowCachedReplies = append(group.ShadowCachedReplies, sourceCachedReplies[shard])
@@ -328,7 +349,8 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 		futureCachedReplies    map[int][]ChunkedCachedReply
 		finishedTransmit       map[int]TransmitInfo
 
-		controllerSeqNum int
+		controllerSeqNum int64
+		transmitNum      int
 	)
 
 	if d.Decode(&serveShardIDs) != nil ||
@@ -341,7 +363,8 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 		d.Decode(&receivingCachedReplies) != nil ||
 		d.Decode(&futureCachedReplies) != nil ||
 		d.Decode(&finishedTransmit) != nil ||
-		d.Decode(&controllerSeqNum) != nil {
+		d.Decode(&controllerSeqNum) != nil ||
+		d.Decode(&transmitNum) != nil {
 		log.Fatalf("Fatal: decoding error!\n")
 	} else {
 		skv.serveShardIDs = serveShardIDs
@@ -354,7 +377,8 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 		skv.receivingCachedReplies = receivingCachedReplies
 		skv.futureCachedReplies = futureCachedReplies
 		skv.finishedTransmit = finishedTransmit
-		skv.controllerSeqNum = int64(controllerSeqNum)
+		skv.controllerSeqNum = controllerSeqNum
+		skv.transmitNum = transmitNum
 	}
 }
 
@@ -374,7 +398,8 @@ func (skv *ShardKV) encodeSnapshot() []byte {
 		e.Encode(skv.receivingCachedReplies) != nil ||
 		e.Encode(skv.futureCachedReplies) != nil ||
 		e.Encode(skv.finishedTransmit) != nil ||
-		e.Encode(skv.controllerSeqNum) != nil {
+		e.Encode(skv.controllerSeqNum) != nil ||
+		e.Encode(skv.transmitNum) != nil {
 		log.Fatalf("encoding error!\n")
 	}
 	data := writer.Bytes()

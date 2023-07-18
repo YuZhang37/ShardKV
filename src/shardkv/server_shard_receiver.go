@@ -6,14 +6,17 @@ import (
 )
 
 func (skv *ShardKV) TransmitShardHandler(args *TransmitShardArgs, reply *TransmitShardReply) {
+	skv.transmitHandlerDPrintf("TransmitShardHandler() receives args: %v\n", args)
 	skv.fillReply(args, reply)
-	TempDPrintf("ShardKV: %v,TransmitShardHandler() is called with %v\n", skv.me, args)
+	skv.transmitHandlerDPrintf("TransmitShardHandler() fillReply: %v\n", reply)
 	if !skv.checkLeaderForTransmit(args, reply) {
 		return
 	}
+	skv.transmitHandlerDPrintf("TransmitShardHandler() checkDupTransmit: %v\n", skv.finishedTransmit[args.GID])
 	if skv.checkDupTransmit(args, reply) {
 		return
 	}
+	skv.transmitHandlerDPrintf("TransmitShardHandler() checkOngoingTransmit: %v\n", skv.onGoingTransmit[args.GID])
 	if skv.checkOngoingTransmit(args, reply) {
 		if skv.waitCommitted(args) {
 			reply.Succeeded = true
@@ -21,17 +24,34 @@ func (skv *ShardKV) TransmitShardHandler(args *TransmitShardArgs, reply *Transmi
 		return
 	}
 	command := skv.getTransmitShardCommand(args, reply)
+	skv.transmitHandlerDPrintf("TransmitShardHandler() getTransmitShardCommand: %v\n", command)
 	if command == nil {
 		return
 	}
-	_, _, succeeded := skv.startCommit(*command)
-	if !succeeded {
+	_, _, appended := skv.startCommit(*command)
+	skv.transmitHandlerDPrintf("TransmitShardHandler() appended: %v\n", appended)
+	if !appended {
 		return
 	}
+	skv.mu.Lock()
+	if transmit, exists := skv.onGoingTransmit[command.Shard]; !exists {
+		skv.onGoingTransmit[command.Shard] = TransmitInfo{
+			FromGID:     command.GID,
+			TransmitNum: command.TransmitNum,
+			ChunkNum:    command.ChunkNum,
+		}
+	} else {
+		// if the command is executed, the command has the latest TransmitNum and ChunkNum
+		transmit.FromGID = command.GID
+		transmit.TransmitNum = command.TransmitNum
+		transmit.ChunkNum = command.ChunkNum
+	}
+	skv.mu.Unlock()
+	skv.transmitHandlerDPrintf("TransmitShardHandler() waitCommitted\n")
 	if skv.waitCommitted(args) {
 		reply.Succeeded = true
 	}
-	TempDPrintf("RequestHandler() finishes with %v\n", reply)
+	skv.transmitHandlerDPrintf("TransmitShardHandler() finishes with %v\n", reply)
 }
 
 func (skv *ShardKV) fillReply(args *TransmitShardArgs, reply *TransmitShardReply) {
