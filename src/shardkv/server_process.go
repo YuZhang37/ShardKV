@@ -68,38 +68,83 @@ controller needs to tell the server request not the client request
 that this is the very first request it sends and the the server needs to pick shards from group 0
 */
 
-// func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
-// 	if command.Config.Num <= skv.config.Num {
-// 		return
-// 	}
-// 	skv.config = command.Config
-// 	for shard := range skv.serveShardIDs {
-// 		if skv.config.Shards[shard] != skv.gid {
-// 			delete(skv.serveShardIDs, shard)
-// 			skv.moveShardToShadow(shard, skv.serveShards, skv.serveCachedReplies)
-// 		}
-// 	}
-// 	for shard, configNum := range skv.futureServeConfigNums {
-// 		if configNum <= skv.config.Num {
-// 			skv.shardLocks[shard].Lock()
-// 			// the server can process futureShards
-// 			if skv.config.Shards[shard] == skv.gid {
-// 				// move shard from future to serve
-// 				skv.serveShardIDs[shard] = true
-// 				skv.serveShards[shard] = skv.futureServeShards[shard]
-// 				skv.serveCachedReplies[shard] = skv.futureCachedReplies[shard]
-// 				delete(skv.futureServeConfigNums, shard)
-// 				delete(skv.futureServeShards, shard)
-// 				delete(skv.futureCachedReplies, shard)
-// 			} else {
-// 				// move shard from future to shadow
-// 				delete(skv.futureServeConfigNums, shard)
-// 				skv.moveShardToShadow(shard, skv.futureServeShards, skv.futureCachedReplies)
-// 			}
-// 			skv.shardLocks[shard].Unlock()
-// 		}
-// 	}
-// }
+func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
+	if command.Config.Num <= skv.config.Num {
+		return
+	}
+	skv.config = command.Config
+	for shard := range skv.serveShardIDs {
+		if skv.config.Shards[shard] != skv.gid {
+			delete(skv.serveShardIDs, shard)
+			skv.moveShardToShadow(shard, skv.serveShards, skv.serveCachedReplies)
+		}
+	}
+	for shard, configNum := range skv.futureServeConfigNums {
+		if configNum <= skv.config.Num {
+			skv.shardLocks[shard].Lock()
+			// the server can process futureShards
+			if skv.config.Shards[shard] == skv.gid {
+				// move shard from future to serve
+				skv.serveShardIDs[shard] = true
+				skv.serveShards[shard] = skv.futureServeShards[shard]
+				skv.serveCachedReplies[shard] = skv.futureCachedReplies[shard]
+				delete(skv.futureServeConfigNums, shard)
+				delete(skv.futureServeShards, shard)
+				delete(skv.futureCachedReplies, shard)
+			} else {
+				// move shard from future to shadow
+				delete(skv.futureServeConfigNums, shard)
+				skv.moveShardToShadow(shard, skv.futureServeShards, skv.futureCachedReplies)
+			}
+			skv.shardLocks[shard].Unlock()
+		}
+	}
+}
+
+/*
+KVData is saved in receivingShards
+Replies is saved in receivingCachedReplies
+when the last chunk of both is received, the sender will delete
+both, the receiver will need to forward the received
+*/
+
+func (skv *ShardKV) processTransmitShard(command TransmitShardCommand) {
+	skv.shardLocks[command.Shard].Lock()
+	defer skv.shardLocks[command.Shard].Unlock()
+	if command.IsKVData {
+		var shardKVStore []ChunkKVStore
+		var exists bool
+		if shardKVStore, exists = skv.receivingShards[command.Shard]; !exists {
+			shardKVStore = make([]ChunkKVStore, 0)
+			skv.receivingShards[command.Shard] = shardKVStore
+		}
+		skv.receivingShards[command.Shard] = append(shardKVStore, command.ShardKVStoreChunk)
+
+	} else {
+		var shardCachedReply []ChunkedCachedReply
+		var exists bool
+		if shardCachedReply, exists = skv.receivingCachedReplies[command.Shard]; !exists {
+			shardCachedReply = make([]ChunkedCachedReply, 0)
+			skv.receivingCachedReplies[command.Shard] = shardCachedReply
+		}
+		skv.receivingCachedReplies[command.Shard] = append(shardCachedReply, command.ShardCachedReplyChunk)
+	}
+
+	if transmit, exists := skv.finishedTransmit[command.Shard]; !exists {
+		skv.finishedTransmit[command.Shard] = TransmitInfo{
+			FromGID:     command.GID,
+			TransmitNum: command.TransmitNum,
+			ChunkNum:    command.ChunkNum,
+		}
+	} else {
+		transmit.ChunkNum = command.ChunkNum
+	}
+	// the transmit request handler can poll finishedTransmit to find out if the command has been applied or not
+
+	if command.IsLastChunk {
+		skv.forwardReceivingChunks(command.ConfigNum, command.Shard)
+	}
+}
 
 /*
 when processing the command for client requests, serveShards must have a map for the shard

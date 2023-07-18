@@ -81,7 +81,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	go skv.commandExecutor()
 	go skv.snapshotController()
 	go skv.configChecker()
-	// go skv.shadowShardInspector()
+	go skv.shadowShardInspector()
 	return skv
 }
 
@@ -513,6 +513,29 @@ func (skv *ShardKV) configChecker() {
 			skv.startCommit(command)
 		} else {
 			skv.mu.Unlock()
+		}
+	}
+}
+
+/*
+the shards moved to the same group needs to be in order
+*/
+func (skv *ShardKV) shadowShardInspector() {
+	// inspect all shadowed groups and initiate moveShard command
+	quit := false
+	for !quit {
+		time.Sleep(time.Duration(INSPECTSHADOWTIMEOUT) * time.Millisecond)
+		skv.mu.Lock()
+		defer skv.mu.Lock()
+		for _, group := range skv.shadowShardGroups {
+			if !group.Processing {
+				go skv.transmitToGroup(group)
+			}
+			group.Processing = true
+		}
+		isValidLeader := skv.rf.IsValidLeader()
+		if skv.killed() || !isValidLeader {
+			quit = true
 		}
 	}
 }
