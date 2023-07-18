@@ -16,6 +16,8 @@ func (sc *ShardController) processJoin(command ControllerCommand) *ControllerRep
 		SeqNum:   command.SeqNum,
 		LeaderId: sc.me,
 
+		FromServers: command.FromServers,
+
 		Succeeded: true,
 	}
 	sc.processPrintf(true, "Join", command, reply)
@@ -43,6 +45,8 @@ func (sc *ShardController) processLeave(command ControllerCommand) *ControllerRe
 		ClerkId:  command.ClerkId,
 		SeqNum:   command.SeqNum,
 		LeaderId: sc.me,
+
+		FromServers: command.FromServers,
 
 		Succeeded: true,
 	}
@@ -72,6 +76,8 @@ func (sc *ShardController) processMove(command ControllerCommand) *ControllerRep
 		ClerkId:  command.ClerkId,
 		SeqNum:   command.SeqNum,
 		LeaderId: sc.me,
+
+		FromServers: command.FromServers,
 
 		Succeeded: true,
 	}
@@ -138,6 +144,8 @@ func (sc *ShardController) processQuery(command ControllerCommand) *ControllerRe
 		SeqNum:   command.SeqNum,
 		LeaderId: sc.me,
 
+		FromServers: command.FromServers,
+
 		Succeeded: true,
 		ErrorCode: NOERROR,
 	}
@@ -154,7 +162,12 @@ func (sc *ShardController) processQuery(command ControllerCommand) *ControllerRe
 			Shards: sc.configs[command.QueryNum].Shards,
 			Groups: sc.configs[command.QueryNum].Groups,
 		}
-
+	}
+	// all clerks in the same group should shard the same clerkid
+	// to make sure when one server in the group contacts the controller and failed before processing the reply, the next leader can pick up the reply cached in the controller.
+	if command.FromServers && !sc.initShards {
+		reply.Config.InitShards = true
+		sc.initShards = false
 	}
 	sc.processPrintf(false, "Query", command, reply)
 	return &reply

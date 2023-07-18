@@ -48,6 +48,8 @@ type Clerk struct {
 	clerkId  int64
 	seqNum   int64
 	leaderId int
+
+	fromServers bool
 }
 
 /*********** end of definition for controller client *************/
@@ -69,6 +71,8 @@ type Config struct {
 	Num    int              // config number
 	Shards [NShards]int     // shard -> gid
 	Groups map[int][]string // gid -> servers[]
+
+	InitShards bool
 }
 type innerConfig struct {
 	Num    int              // config number
@@ -101,10 +105,13 @@ type ShardController struct {
 	// 0 is the initial config
 	// indexed by config num
 	configs []innerConfig // persist
+
+	initShards bool
 }
 
 type ControllerCommand struct {
 	ClerkId      int64
+	FromServers  bool
 	SeqNum       int64
 	Operation    string
 	JoinedGroups map[int][]string
@@ -120,6 +127,8 @@ type ControllerCommand struct {
 type ControllerRequestArgs struct {
 	ClerkId int64
 	SeqNum  int64
+
+	FromServers bool
 
 	Operation string
 	// Join
@@ -137,6 +146,8 @@ type ControllerReply struct {
 	ClerkId  int64
 	SeqNum   int64
 	LeaderId int
+
+	FromServers bool
 
 	// being committed or not
 	Succeeded bool

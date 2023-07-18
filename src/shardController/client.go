@@ -9,12 +9,26 @@ import (
 	"6.5840/labrpc"
 )
 
-func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
+func MakeClerk(servers []*labrpc.ClientEnd, opts ...interface{}) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
 	ck.clerkId = nrand()
-	ck.seqNum = 1
+	ck.seqNum = 0
 	ck.leaderId = mathRand.Intn(len(ck.servers))
+	if len(opts) >= 1 {
+		var ok bool
+		ck.fromServers, ok = opts[0].(bool)
+		if !ok {
+			log.Fatal("Fatal: MakeClerk() error for shardController. opts[0] expects bool")
+		}
+	}
+	if len(opts) >= 2 {
+		var ok bool
+		ck.clerkId, ok = opts[1].(int64)
+		if !ok {
+			log.Fatal("Fatal: MakeClerk() error for shardController. opts[1] expects int64")
+		}
+	}
 	return ck
 }
 
@@ -58,6 +72,8 @@ func (ck *Clerk) Query(num int) Config {
 		ClerkId: ck.clerkId,
 		SeqNum:  ck.seqNum,
 
+		FromServers: ck.fromServers,
+
 		Operation: QUERY,
 		QueryNum:  num,
 	}
@@ -71,6 +87,8 @@ func (ck *Clerk) Join(groups map[int][]string) {
 		ClerkId: ck.clerkId,
 		SeqNum:  ck.seqNum,
 
+		FromServers: ck.fromServers,
+
 		Operation:    JOIN,
 		JoinedGroups: groups,
 	}
@@ -83,6 +101,8 @@ func (ck *Clerk) Leave(gids []int) {
 		ClerkId: ck.clerkId,
 		SeqNum:  ck.seqNum,
 
+		FromServers: ck.fromServers,
+
 		Operation: LEAVE,
 		LeaveGIDs: gids,
 	}
@@ -94,6 +114,8 @@ func (ck *Clerk) Move(shard int, gid int) {
 	args := ControllerRequestArgs{
 		ClerkId: ck.clerkId,
 		SeqNum:  ck.seqNum,
+
+		FromServers: ck.fromServers,
 
 		Operation:  MOVE,
 		MovedShard: shard,

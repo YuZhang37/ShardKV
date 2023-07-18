@@ -14,6 +14,7 @@ import (
 
 func (sc *ShardController) RequestHandler(args *ControllerRequestArgs, reply *ControllerReply) {
 	sc.tempDPrintf("ShardController: %v, RequestHandler() is called with %v\n", sc.me, args)
+	sc.fillReply(args, reply)
 	if !sc.checkLeader(args, reply) {
 		return
 	}
@@ -37,6 +38,12 @@ func (sc *ShardController) RequestHandler(args *ControllerRequestArgs, reply *Co
 	delete(sc.clerkChans, args.ClerkId)
 	sc.mu.Unlock()
 	sc.tempDPrintf("ShardController: %v, RequestHandler() finishes with %v\n", sc.me, reply)
+}
+
+func (sc *ShardController) fillReply(args *ControllerRequestArgs, reply *ControllerReply) {
+	reply.ClerkId = args.ClerkId
+	reply.SeqNum = args.SeqNum
+	reply.FromServers = args.FromServers
 }
 
 func (sc *ShardController) checkLeader(args *ControllerRequestArgs, reply *ControllerReply) bool {
@@ -134,11 +141,14 @@ func (sc *ShardController) waitReply(clerkChan chan ControllerReply, args *Contr
 func (sc *ShardController) copyReply(from *ControllerReply, to *ControllerReply) {
 	to.ClerkId = from.ClerkId
 	to.SeqNum = from.SeqNum
+	to.FromServers = from.FromServers
 	to.LeaderId = from.LeaderId
 
 	to.Succeeded = from.Succeeded
 	to.SizeExceeded = from.SizeExceeded
 	to.Config = from.Config
+	to.ErrorCode = from.ErrorCode
+	to.ErrorMessage = from.ErrorMessage
 }
 
 // long-running thread for leader
@@ -200,8 +210,21 @@ func (sc *ShardController) processCommand(commandIndex int, commandTerm int, com
 	if !isControllerCommand {
 		log.Fatalf("ShardController %v, expecting a ControllerCommand: %v\n", sc.me, command)
 	}
-	if sc.cachedReplies[command.ClerkId].SeqNum >= command.SeqNum {
+	if sc.cachedReplies[command.ClerkId].SeqNum == command.SeqNum {
 		// drop the duplicated commands
+		// if the client doesn't send request one by one, can't
+		// simply drop, needs to sendReply()
+		// sendReply() needs to check the client is waiting or not
+		cachedReply := sc.cachedReplies[command.ClerkId]
+		go sc.sendReply(&cachedReply)
+		return
+	}
+	if sc.cachedReplies[command.ClerkId].SeqNum > command.SeqNum {
+		// reply = &ControllerReply{}
+		// reply.ClerkId = command.ClerkId
+		// reply.SeqNum = command.SeqNum
+		// reply.FromServers = command.FromServers
+		// go sc.sendReply(reply)
 		return
 	}
 	switch command.Operation {
@@ -226,7 +249,12 @@ func (sc *ShardController) processCommand(commandIndex int, commandTerm int, com
 func (sc *ShardController) sendReply(reply *ControllerReply) {
 	sc.tempDPrintf("ShardController %v, sends to: %v reply %v \n", sc.me, reply, reply.ClerkId)
 	sc.mu.Lock()
-	clerkChan := sc.clerkChans[reply.ClerkId]
+	clerkChan, exists := sc.clerkChans[reply.ClerkId]
+	if !exists {
+		// the clerk is not waiting, no need to send reply
+		sc.mu.Unlock()
+		return
+	}
 	sc.mu.Unlock()
 	quit := false
 	for !quit {
@@ -357,6 +385,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 
 	sc.configs = make([]innerConfig, 0)
 	sc.initConfig(0)
+	sc.initShards = false
 
 	go sc.commandExecutor()
 	go sc.snapshotController()
