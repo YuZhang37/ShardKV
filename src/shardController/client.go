@@ -9,11 +9,20 @@ import (
 	"6.5840/labrpc"
 )
 
-func MakeClerk(servers []*labrpc.ClientEnd, opts ...interface{}) *Clerk {
+func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
 	ck.clerkId = nrand()
 	ck.seqNum = 0
+	ck.leaderId = mathRand.Intn(len(ck.servers))
+	return ck
+}
+
+func MakeQueryClerk(servers []*labrpc.ClientEnd, opts ...interface{}) *Clerk {
+	ck := new(Clerk)
+	ck.servers = servers
+	ck.clerkId = nrand()
+	ck.seqNum = -1
 	ck.leaderId = mathRand.Intn(len(ck.servers))
 	if len(opts) >= 1 {
 		var ok bool
@@ -66,7 +75,27 @@ func (ck *Clerk) sendRequest(args *ControllerRequestArgs) *ControllerReply {
 	return &reply
 }
 
+func (ck *Clerk) QueryWithSeqNum(queryNum int, seqNum int64) Config {
+	if ck.seqNum != -1 {
+		log.Fatalf("Fatal: QueryWithSeqNum() is only supported for QueryClerk!")
+	}
+	args := ControllerRequestArgs{
+		ClerkId: ck.clerkId,
+		SeqNum:  seqNum,
+
+		FromServers: ck.fromServers,
+
+		Operation: QUERY,
+		QueryNum:  queryNum,
+	}
+	reply := ck.sendRequest(&args)
+	return reply.Config
+}
+
 func (ck *Clerk) Query(num int) Config {
+	if ck.seqNum == -1 {
+		log.Fatalf("Fatal: QueryWithSeqNum() is not supported for QueryClerk!")
+	}
 	ck.seqNum++
 	args := ControllerRequestArgs{
 		ClerkId: ck.clerkId,
@@ -82,6 +111,9 @@ func (ck *Clerk) Query(num int) Config {
 }
 
 func (ck *Clerk) Join(groups map[int][]string) {
+	if ck.seqNum == -1 {
+		log.Fatalf("Fatal: QueryWithSeqNum() is not supported for QueryClerk!")
+	}
 	ck.seqNum++
 	args := ControllerRequestArgs{
 		ClerkId: ck.clerkId,
@@ -96,6 +128,9 @@ func (ck *Clerk) Join(groups map[int][]string) {
 }
 
 func (ck *Clerk) Leave(gids []int) {
+	if ck.seqNum == -1 {
+		log.Fatalf("Fatal: QueryWithSeqNum() is not supported for QueryClerk!")
+	}
 	ck.seqNum++
 	args := ControllerRequestArgs{
 		ClerkId: ck.clerkId,
@@ -110,6 +145,9 @@ func (ck *Clerk) Leave(gids []int) {
 }
 
 func (ck *Clerk) Move(shard int, gid int) {
+	if ck.seqNum == -1 {
+		log.Fatalf("Fatal: QueryWithSeqNum() is not supported for QueryClerk!")
+	}
 	ck.seqNum++
 	args := ControllerRequestArgs{
 		ClerkId: ck.clerkId,

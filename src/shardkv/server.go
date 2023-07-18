@@ -53,7 +53,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	skv.make_end = make_end
 	skv.gid = gid
 
-	skv.controllerClerk = shardController.MakeClerk(ctrlers, true, int64(skv.gid))
+	skv.controllerClerk = shardController.MakeQueryClerk(ctrlers, true, int64(skv.gid))
 
 	skv.applyCh = make(chan raft.ApplyMsg)
 	skv.rf = raft.Make(servers, me, persister, skv.applyCh)
@@ -485,6 +485,7 @@ then issues a MetaUpdateCommand
 */
 func (skv *ShardKV) configChecker() {
 	skv.tempDPrintf("configChecker is running...")
+	configNum := int64(10)
 	for !skv.killed() {
 		time.Sleep(time.Duration(CHECKCONFIGTIMEOUT) * time.Millisecond)
 		skv.tempDPrintf("configChecker sends query...\n")
@@ -492,7 +493,8 @@ func (skv *ShardKV) configChecker() {
 		if !isValidLeader {
 			continue
 		}
-		newConfig := skv.controllerClerk.Query(-1)
+		configNum++
+		newConfig := skv.controllerClerk.QueryWithSeqNum(-1, configNum)
 		skv.tempDPrintf("configChecker queries newConfig: %v, old config: %v\n", newConfig, skv.config)
 		skv.mu.Lock()
 		if newConfig.Num > skv.config.Num {
