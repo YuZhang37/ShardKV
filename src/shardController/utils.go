@@ -39,7 +39,7 @@ func (sc *ShardController) processPrintf(start bool, operation string, command C
 		}
 		log.Printf("ShardServer: %v, current state: \n", sc.me)
 		for index, config := range sc.configs {
-			log.Printf("\nShardServer: %v, index: %v, config.Num: %v, \nconfig.operation: %v, \nconfig.Shards (size %v): %v, \nconfig.Groups (size %v): %v, \nconfig.ServerNames (size %v): %v, \nconfig.GroupInfos (size %v): %v\n", sc.me, index, config.Num, config.Operation, len(config.Shards), config.Shards, len(config.Groups), config.Groups, len(config.ServerNames), config.ServerNames, len(config.GroupInfos), config.GroupInfos)
+			log.Printf("\nShardServer: %v, index: %v, config.Num: %v, \nconfig.operation: %v, \nconfig.Shards (size %v): %v, \nconfig.Groups (size %v): %v, \nconfig.ServerNames (size %v): %v, \nconfig.GroupInfos (size %v): %v\n config.UninitializedShards (size %v): %v", sc.me, index, config.Num, config.Operation, len(config.Shards), config.Shards, len(config.Groups), config.Groups, len(config.ServerNames), config.ServerNames, len(config.GroupInfos), config.GroupInfos, len(config.UninitializedShards), config.UninitializedShards)
 		}
 
 	}

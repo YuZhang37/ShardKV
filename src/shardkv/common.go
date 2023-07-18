@@ -101,8 +101,9 @@ type ShardKV struct {
 	make_end     func(string) *labrpc.ClientEnd
 	gid          int
 
-	controllerClerk *shardController.Clerk
-	config          shardController.Config
+	controllerClerk  *shardController.Clerk
+	config           shardController.Config
+	controllerSeqNum int64
 
 	applyCh chan raft.ApplyMsg
 	rf      *raft.Raft

@@ -16,7 +16,7 @@ func (sc *ShardController) processJoin(command ControllerCommand) *ControllerRep
 		SeqNum:   command.SeqNum,
 		LeaderId: sc.me,
 
-		FromServers: command.FromServers,
+		FromGroup: command.FromGroup,
 
 		Succeeded: true,
 	}
@@ -46,7 +46,7 @@ func (sc *ShardController) processLeave(command ControllerCommand) *ControllerRe
 		SeqNum:   command.SeqNum,
 		LeaderId: sc.me,
 
-		FromServers: command.FromServers,
+		FromGroup: command.FromGroup,
 
 		Succeeded: true,
 	}
@@ -61,6 +61,7 @@ func (sc *ShardController) processLeave(command ControllerCommand) *ControllerRe
 		return &reply
 	}
 	if len(command.LeaveGIDs) == len(nextConfig.Groups) {
+		// the kvstore data is gone
 		sc.initConfig(nextConfig.Num)
 		return &reply
 	}
@@ -77,7 +78,7 @@ func (sc *ShardController) processMove(command ControllerCommand) *ControllerRep
 		SeqNum:   command.SeqNum,
 		LeaderId: sc.me,
 
-		FromServers: command.FromServers,
+		FromGroup: command.FromGroup,
 
 		Succeeded: true,
 	}
@@ -114,6 +115,7 @@ func (sc *ShardController) copyConfig(from *innerConfig) *innerConfig {
 	to.Groups = make(map[int][]string)
 	to.GroupInfos = make([]GroupInfo, 0)
 	to.ServerNames = make(map[string]int)
+	to.UninitializedShards = make(map[int]bool)
 	for key, value := range from.Groups {
 		to.Groups[key] = make([]string, 0)
 		to.Groups[key] = append(to.Groups[key], value...)
@@ -123,6 +125,9 @@ func (sc *ShardController) copyConfig(from *innerConfig) *innerConfig {
 	}
 	for key, value := range from.ServerNames {
 		to.ServerNames[key] = value
+	}
+	for key, value := range from.UninitializedShards {
+		to.UninitializedShards[key] = value
 	}
 	return &to
 }
@@ -144,7 +149,7 @@ func (sc *ShardController) processQuery(command ControllerCommand) *ControllerRe
 		SeqNum:   command.SeqNum,
 		LeaderId: sc.me,
 
-		FromServers: command.FromServers,
+		FromGroup: command.FromGroup,
 
 		Succeeded: true,
 		ErrorCode: NOERROR,
@@ -163,12 +168,33 @@ func (sc *ShardController) processQuery(command ControllerCommand) *ControllerRe
 			Groups: sc.configs[command.QueryNum].Groups,
 		}
 	}
-	// all clerks in the same group should shard the same clerkid
-	// to make sure when one server in the group contacts the controller and failed before processing the reply, the next leader can pick up the reply cached in the controller.
-	if command.FromServers && !sc.initShards {
-		reply.Config.InitShards = true
-		sc.initShards = false
+	if command.FromGroup == -1 {
+		// the query is from client
+		sc.processPrintf(false, "Query0", command, reply)
+		return &reply
 	}
-	sc.processPrintf(false, "Query", command, reply)
+
+	latestConfig := sc.configs[len(sc.configs)-1]
+	AssignedShards := make([]int, 0)
+	for shard := range latestConfig.UninitializedShards {
+		if latestConfig.Shards[shard] == command.FromGroup {
+			AssignedShards = append(AssignedShards, shard)
+		}
+	}
+	if len(AssignedShards) == 0 {
+		// the query is from servers, but currently no unassigned shards for this group
+		sc.processPrintf(false, "Query1", command, reply)
+		return &reply
+	}
+	// shards in AssignedShards has been removed
+	nextConfig := sc.copyConfig(&latestConfig)
+	nextConfig.Num++
+	for _, shard := range AssignedShards {
+		delete(nextConfig.UninitializedShards, shard)
+	}
+	nextConfig.Operation = fmt.Sprintf("operation: %v", command)
+	sc.configs = append(sc.configs, *nextConfig)
+	reply.Config.AssignedShards = AssignedShards
+	sc.processPrintf(false, "Query2", command, reply)
 	return &reply
 }

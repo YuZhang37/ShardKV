@@ -43,7 +43,7 @@ func (sc *ShardController) RequestHandler(args *ControllerRequestArgs, reply *Co
 func (sc *ShardController) fillReply(args *ControllerRequestArgs, reply *ControllerReply) {
 	reply.ClerkId = args.ClerkId
 	reply.SeqNum = args.SeqNum
-	reply.FromServers = args.FromServers
+	reply.FromGroup = args.FromGroup
 }
 
 func (sc *ShardController) checkLeader(args *ControllerRequestArgs, reply *ControllerReply) bool {
@@ -73,6 +73,7 @@ func (sc *ShardController) checkCachedReply(args *ControllerRequestArgs, reply *
 func (sc *ShardController) getControllerCommand(args *ControllerRequestArgs, reply *ControllerReply) *ControllerCommand {
 	command := &ControllerCommand{
 		ClerkId:      args.ClerkId,
+		FromGroup:    args.FromGroup,
 		SeqNum:       args.SeqNum,
 		Operation:    args.Operation,
 		JoinedGroups: args.JoinedGroups,
@@ -141,7 +142,7 @@ func (sc *ShardController) waitReply(clerkChan chan ControllerReply, args *Contr
 func (sc *ShardController) copyReply(from *ControllerReply, to *ControllerReply) {
 	to.ClerkId = from.ClerkId
 	to.SeqNum = from.SeqNum
-	to.FromServers = from.FromServers
+	to.FromGroup = from.FromGroup
 	to.LeaderId = from.LeaderId
 
 	to.Succeeded = from.Succeeded
@@ -385,7 +386,6 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 
 	sc.configs = make([]innerConfig, 0)
 	sc.initConfig(0)
-	sc.initShards = false
 
 	go sc.commandExecutor()
 	go sc.snapshotController()
@@ -400,5 +400,9 @@ func (sc *ShardController) initConfig(num int) {
 	config.Groups = make(map[int][]string)
 	config.ServerNames = make(map[string]int)
 	config.GroupInfos = make([]GroupInfo, 0)
+	config.UninitializedShards = make(map[int]bool)
+	for i := 0; i < NShards; i++ {
+		config.UninitializedShards[i] = true
+	}
 	sc.configs = append(sc.configs, config)
 }

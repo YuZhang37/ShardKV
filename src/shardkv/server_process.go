@@ -12,6 +12,16 @@ import (
 skv.mu is held for all function calls in this file
 */
 
+/*
+some infinite loops
+The root cause:
+the group contacts the controller at 1,
+and creates a new config at 2,
+it gets all the uninitialized shards,
+but currently we don't support moving shards
+
+*/
+
 func (skv *ShardKV) processConfigUpdateStatic(command ConfigUpdateCommand) {
 	skv.tempDPrintf("ShardKV %v receives ConfigUpdateCommand: %v\n", skv.me, command)
 	if command.Config.Num < 2 {
@@ -22,28 +32,25 @@ func (skv *ShardKV) processConfigUpdateStatic(command ConfigUpdateCommand) {
 		skv.tempDPrintf("Config with configNum: %v <= current config.Num: %v, return\n", command.Config.Num, skv.config.Num)
 		return
 	}
+	skv.tempDPrintf("ShardKV %v initializing for ConfigUpdateCommand: %v\n", skv.me, command)
 	skv.config = command.Config
-	for shard, GID := range skv.config.Shards {
-		if GID == skv.gid {
-			chunks := make([]ChunkKVStore, 0)
-			chunks = append(chunks, ChunkKVStore{
-				Size:    0,
-				KVStore: make(map[string]string),
-			})
-			skv.serveShards[shard] = chunks
-			skv.serveShardIDs[shard] = true
-		}
+	for _, shard := range skv.config.AssignedShards {
+		chunks := make([]ChunkKVStore, 0)
+		chunks = append(chunks, ChunkKVStore{
+			Size:    0,
+			KVStore: make(map[string]string),
+		})
+		skv.serveShards[shard] = chunks
+		skv.serveShardIDs[shard] = true
 	}
-	for shard, GID := range skv.config.Shards {
-		if GID == skv.gid {
-			chunks := make([]ChunkedCachedReply, 0)
-			chunks = append(chunks, ChunkedCachedReply{
-				Size:          0,
-				CachedReplies: make(map[int64]RequestReply),
-			})
-			// must lock, since the request handler can check cached replies
-			skv.serveCachedReplies[shard] = chunks
-		}
+	for _, shard := range skv.config.AssignedShards {
+		chunks := make([]ChunkedCachedReply, 0)
+		chunks = append(chunks, ChunkedCachedReply{
+			Size:          0,
+			CachedReplies: make(map[int64]RequestReply),
+		})
+		// must lock, since the request handler can check cached replies
+		skv.serveCachedReplies[shard] = chunks
 	}
 	skv.tempDPrintf("skv.config: %v, skv.serveShards: %v, skv.serveShardIDs: %v, skv.serveCachedReplies: %v\n", skv.config, skv.serveShards, skv.serveShardIDs, skv.serveCachedReplies)
 	skv.tempDPrintf("ShardKV %v finishes ConfigUpdateCommand: %v\n", skv.me, command)

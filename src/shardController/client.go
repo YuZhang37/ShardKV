@@ -13,6 +13,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
 	ck.clerkId = nrand()
+	ck.fromGroup = -1
 	ck.seqNum = 0
 	ck.leaderId = mathRand.Intn(len(ck.servers))
 	return ck
@@ -26,9 +27,9 @@ func MakeQueryClerk(servers []*labrpc.ClientEnd, opts ...interface{}) *Clerk {
 	ck.leaderId = mathRand.Intn(len(ck.servers))
 	if len(opts) >= 1 {
 		var ok bool
-		ck.fromServers, ok = opts[0].(bool)
+		ck.fromGroup, ok = opts[0].(int)
 		if !ok {
-			log.Fatal("Fatal: MakeClerk() error for shardController. opts[0] expects bool")
+			log.Fatal("Fatal: MakeClerk() error for shardController. opts[0] expects int")
 		}
 	}
 	if len(opts) >= 2 {
@@ -83,7 +84,7 @@ func (ck *Clerk) QueryWithSeqNum(queryNum int, seqNum int64) Config {
 		ClerkId: ck.clerkId,
 		SeqNum:  seqNum,
 
-		FromServers: ck.fromServers,
+		FromGroup: ck.fromGroup,
 
 		Operation: QUERY,
 		QueryNum:  queryNum,
@@ -101,7 +102,7 @@ func (ck *Clerk) Query(num int) Config {
 		ClerkId: ck.clerkId,
 		SeqNum:  ck.seqNum,
 
-		FromServers: ck.fromServers,
+		FromGroup: ck.fromGroup,
 
 		Operation: QUERY,
 		QueryNum:  num,
@@ -119,7 +120,7 @@ func (ck *Clerk) Join(groups map[int][]string) {
 		ClerkId: ck.clerkId,
 		SeqNum:  ck.seqNum,
 
-		FromServers: ck.fromServers,
+		FromGroup: ck.fromGroup,
 
 		Operation:    JOIN,
 		JoinedGroups: groups,
@@ -136,7 +137,7 @@ func (ck *Clerk) Leave(gids []int) {
 		ClerkId: ck.clerkId,
 		SeqNum:  ck.seqNum,
 
-		FromServers: ck.fromServers,
+		FromGroup: ck.fromGroup,
 
 		Operation: LEAVE,
 		LeaveGIDs: gids,
@@ -153,7 +154,7 @@ func (ck *Clerk) Move(shard int, gid int) {
 		ClerkId: ck.clerkId,
 		SeqNum:  ck.seqNum,
 
-		FromServers: ck.fromServers,
+		FromGroup: ck.fromGroup,
 
 		Operation:  MOVE,
 		MovedShard: shard,
