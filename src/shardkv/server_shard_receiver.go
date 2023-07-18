@@ -12,11 +12,11 @@ func (skv *ShardKV) TransmitShardHandler(args *TransmitShardArgs, reply *Transmi
 	if !skv.checkLeaderForTransmit(args, reply) {
 		return
 	}
-	skv.transmitHandlerDPrintf("TransmitShardHandler() checkDupTransmit: %v\n", skv.finishedTransmit[args.GID])
+	skv.transmitHandlerDPrintf("TransmitShardHandler() checkDupTransmit: %v\n", skv.finishedTransmit[args.FromGID])
 	if skv.checkDupTransmit(args, reply) {
 		return
 	}
-	skv.transmitHandlerDPrintf("TransmitShardHandler() checkOngoingTransmit: %v\n", skv.onGoingTransmit[args.GID])
+	skv.transmitHandlerDPrintf("TransmitShardHandler() checkOngoingTransmit: %v\n", skv.onGoingTransmit[args.FromGID])
 	if skv.checkOngoingTransmit(args, reply) {
 		if skv.waitCommitted(args) {
 			reply.Succeeded = true
@@ -34,18 +34,13 @@ func (skv *ShardKV) TransmitShardHandler(args *TransmitShardArgs, reply *Transmi
 		return
 	}
 	skv.mu.Lock()
-	if transmit, exists := skv.onGoingTransmit[command.Shard]; !exists {
-		skv.onGoingTransmit[command.Shard] = TransmitInfo{
-			FromGID:     command.GID,
-			TransmitNum: command.TransmitNum,
-			ChunkNum:    command.ChunkNum,
-		}
-	} else {
-		// if the command is executed, the command has the latest TransmitNum and ChunkNum
-		transmit.FromGID = command.GID
-		transmit.TransmitNum = command.TransmitNum
-		transmit.ChunkNum = command.ChunkNum
+	// if the command is executed, the command has the latest TransmitNum and ChunkNum
+	skv.onGoingTransmit[command.Shard] = TransmitInfo{
+		FromGID:     command.FromGID,
+		TransmitNum: command.TransmitNum,
+		ChunkNum:    command.ChunkNum,
 	}
+
 	skv.mu.Unlock()
 	skv.transmitHandlerDPrintf("TransmitShardHandler() waitCommitted\n")
 	if skv.waitCommitted(args) {
@@ -59,7 +54,7 @@ func (skv *ShardKV) fillReply(args *TransmitShardArgs, reply *TransmitShardReply
 	reply.TransmitNum = args.TransmitNum
 	reply.ChunkNum = args.ChunkNum
 	reply.IsKVData = args.IsKVData
-	reply.GID = args.GID
+	reply.FromGID = args.FromGID
 	reply.ConfigNum = args.ConfigNum
 	reply.Shard = args.Shard
 }
@@ -76,7 +71,7 @@ func (skv *ShardKV) checkLeaderForTransmit(args *TransmitShardArgs, reply *Trans
 func (skv *ShardKV) checkDupTransmit(args *TransmitShardArgs, reply *TransmitShardReply) bool {
 	skv.mu.Lock()
 	defer skv.mu.Unlock()
-	transmit, exists := skv.finishedTransmit[args.GID]
+	transmit, exists := skv.finishedTransmit[args.FromGID]
 	if !exists {
 		return false
 	}
@@ -100,7 +95,7 @@ func (skv *ShardKV) checkDupTransmit(args *TransmitShardArgs, reply *TransmitSha
 func (skv *ShardKV) checkOngoingTransmit(args *TransmitShardArgs, reply *TransmitShardReply) bool {
 	skv.mu.Lock()
 	defer skv.mu.Unlock()
-	transmit, exists := skv.onGoingTransmit[args.GID]
+	transmit, exists := skv.onGoingTransmit[args.FromGID]
 	if !exists {
 		return false
 	}
@@ -126,7 +121,7 @@ func (skv *ShardKV) getTransmitShardCommand(args *TransmitShardArgs, reply *Tran
 		TransmitNum: args.TransmitNum,
 		ChunkNum:    args.ChunkNum,
 		IsKVData:    args.IsKVData,
-		GID:         args.GID,
+		FromGID:     args.FromGID,
 		ConfigNum:   args.ConfigNum,
 		Shard:       args.Shard,
 	}
@@ -149,6 +144,7 @@ func (skv *ShardKV) getTransmitShardCommand(args *TransmitShardArgs, reply *Tran
 }
 
 func (skv *ShardKV) waitCommitted(args *TransmitShardArgs) bool {
+	skv.transmitHandlerDPrintf("waitCommitted() receives args: %v\n", args)
 	for {
 		time.Sleep(time.Duration(CHECKCOMMITTEDTIMEOUT) * time.Millisecond)
 		isValidLeader := skv.rf.IsValidLeader()
@@ -156,7 +152,9 @@ func (skv *ShardKV) waitCommitted(args *TransmitShardArgs) bool {
 			break
 		}
 		skv.mu.Lock()
-		if transmit, exists := skv.finishedTransmit[args.GID]; exists {
+		transmit, exists := skv.finishedTransmit[args.FromGID]
+		skv.transmitHandlerDPrintf("waitCommitted() gets transmit for FromGID %v, TransmitNum %v: %v, %v\n", args.FromGID, args.TransmitNum, transmit, exists)
+		if exists {
 			if transmit.TransmitNum > args.TransmitNum {
 				skv.mu.Unlock()
 				return true

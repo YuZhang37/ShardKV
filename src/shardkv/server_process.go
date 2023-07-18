@@ -30,7 +30,7 @@ func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
 	if len(skv.config.AssignedShards) > 0 {
 		skv.tempDPrintf("ShardKV %v initializing for ConfigUpdateCommand: %v\n", skv.me, command)
 		skv.initializeShardsFromConfig()
-		skv.tempDPrintf("ShardKV %v finishes ConfigUpdateCommand: %v\n", skv.me, command)
+		skv.tempDPrintf("ShardKV %v finishes initializing for ConfigUpdateCommand, skv.serveShardIDs: %v,\n skv.serveShards: %v,\n skv.serveCachedReplies: %v\n", skv.me, skv.serveShardIDs, skv.serveShards, skv.serveCachedReplies)
 	}
 	sortedShards := skv.sortedKeys(skv.serveShardIDs)
 	for shard := range sortedShards {
@@ -38,6 +38,7 @@ func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
 			skv.shardLocks[shard].Lock()
 			delete(skv.serveShardIDs, shard)
 			skv.moveShardToShadow(shard, skv.serveShards, skv.serveCachedReplies)
+			skv.moveShardDPrintf("after moveShardToShadow() updates group for shard: %v, shadowGroups: %v\n", shard, skv.shadowShardGroups)
 			skv.shardLocks[shard].Unlock()
 		}
 	}
@@ -124,17 +125,11 @@ func (skv *ShardKV) processTransmitShard(command TransmitShardCommand) {
 		skv.receivingCachedReplies[command.Shard] = append(shardCachedReply, command.ShardCachedReplyChunk)
 	}
 
-	if transmit, exists := skv.finishedTransmit[command.Shard]; !exists {
-		skv.finishedTransmit[command.Shard] = TransmitInfo{
-			FromGID:     command.GID,
-			TransmitNum: command.TransmitNum,
-			ChunkNum:    command.ChunkNum,
-		}
-	} else {
-		// if the command is executed, the command has the latest TransmitNum and ChunkNum
-		transmit.FromGID = command.GID
-		transmit.TransmitNum = command.TransmitNum
-		transmit.ChunkNum = command.ChunkNum
+	// if the command is executed, the command has the latest TransmitNum and ChunkNum
+	skv.finishedTransmit[command.FromGID] = TransmitInfo{
+		FromGID:     command.FromGID,
+		TransmitNum: command.TransmitNum,
+		ChunkNum:    command.ChunkNum,
 	}
 	skv.moveShardDPrintf("processTransmitShard() updates: \n skv.receivingShards(size %v): %v,\n skv.receivingCachedReplies (size %v): %v,\n skv.finishedTransmit (size %v): %v\n", len(skv.receivingShards), skv.receivingShards, len(skv.receivingCachedReplies), skv.receivingCachedReplies, len(skv.finishedTransmit), skv.finishedTransmit)
 	// the transmit request handler can poll finishedTransmit to find out if the command has been applied or not
@@ -177,21 +172,23 @@ func (skv *ShardKV) forwardReceivingChunks(configNum int, shard int) {
 // skv.mu and shardLocks[shard] are held
 // skv.shardLocks[shard] needs to be held
 func (skv *ShardKV) moveShardToShadow(shard int, sourceShards map[int][]ChunkKVStore, sourceCachedReplies map[int][]ChunkedCachedReply) {
-	skv.moveShardDPrintf("moveShardToShadow() receives shard: %v, sourceShards: %v, sourceCachedReplies: %v\n", shard, sourceShards, sourceCachedReplies)
+	skv.moveShardDPrintf("moveShardToShadow() receives shard: %v,\n sourceShards: %v,\n sourceCachedReplies: %v\n", shard, sourceShards, sourceCachedReplies)
 
 	skv.transmitNum++
 	targetGID := skv.config.Shards[shard]
 	var group *ShadowShardGroup = nil
-	for _, tempGroup := range skv.shadowShardGroups {
+	skv.moveShardDPrintf("moveShardToShadow() before updating group for shard: %v: %v, shadowGroups: %v\n", shard, group, skv.shadowShardGroups)
+	for index, tempGroup := range skv.shadowShardGroups {
 		if tempGroup.TargetGID == targetGID {
-			group = &tempGroup
+			group = &(skv.shadowShardGroups[index])
 			break
 		}
 	}
+	skv.moveShardDPrintf("moveShardToShadow() gets nil group for shard? %v: %v: %v\n", group == nil, shard, group)
 	if group == nil {
 		servernames := make([]string, 0)
 		servernames = append(servernames, skv.config.Groups[targetGID]...)
-		group = &ShadowShardGroup{
+		newGroup := ShadowShardGroup{
 			TargetGID:           targetGID,
 			Servernames:         servernames,
 			ShardIDs:            make([]int, 0),
@@ -200,6 +197,8 @@ func (skv *ShardKV) moveShardToShadow(shard int, sourceShards map[int][]ChunkKVS
 			ShadowShards:        make([][]ChunkKVStore, 0),
 			ShadowCachedReplies: make([][]ChunkedCachedReply, 0),
 		}
+		skv.shadowShardGroups = append(skv.shadowShardGroups, newGroup)
+		group = &(skv.shadowShardGroups[len(skv.shadowShardGroups)-1])
 	}
 	skv.moveShardDPrintf("moveShardToShadow() gets group for shard: %v: %v\n", shard, group)
 	group.ShardIDs = append(group.ShardIDs, shard)
@@ -207,10 +206,10 @@ func (skv *ShardKV) moveShardToShadow(shard int, sourceShards map[int][]ChunkKVS
 	group.ConfigNums = append(group.ConfigNums, skv.config.Num)
 	group.ShadowShards = append(group.ShadowShards, sourceShards[shard])
 	group.ShadowCachedReplies = append(group.ShadowCachedReplies, sourceCachedReplies[shard])
-	skv.moveShardDPrintf("moveShardToShadow() updates group for shard: %v: %v\n", shard, group)
+	skv.moveShardDPrintf("moveShardToShadow() updates group for shard: %v: %v, shadowGroups: %v\n", shard, group, skv.shadowShardGroups)
 	delete(sourceShards, shard)
 	delete(sourceCachedReplies, shard)
-	skv.moveShardDPrintf("moveShardToShadow() finishes shard: %v, sourceShards: %v, sourceCachedReplies: %v\n", shard, sourceShards, sourceCachedReplies)
+	skv.moveShardDPrintf("moveShardToShadow() finishes shard: %v,\n sourceShards: %v,\n sourceCachedReplies: %v\n", shard, sourceShards, sourceCachedReplies)
 }
 
 /*
@@ -292,20 +291,21 @@ func (skv *ShardKV) putAppendOp(command *ShardKVCommand) (string, bool) {
 		newValue += prevValue
 	}
 	commandSize := unsafe.Sizeof(command.Key + newValue)
-	for _, chunk := range skv.serveShards[command.Shard] {
+	for index, chunk := range skv.serveShards[command.Shard] {
 		if chunk.Size+commandSize <= MAXSHARDCHUNKSIZE {
-			targetChunk = &chunk
+			targetChunk = &(skv.serveShards[command.Shard][index])
 			break
 		}
 	}
 	if targetChunk == nil {
-		targetChunk = &ChunkKVStore{
+		tempChunk := ChunkKVStore{
 			Size:    0,
 			KVStore: make(map[string]string),
 		}
-		skv.serveShards[command.Shard] = append(skv.serveShards[command.Shard], *targetChunk)
+		skv.serveShards[command.Shard] = append(skv.serveShards[command.Shard], tempChunk)
+		targetChunk = &(skv.serveShards[command.Shard][len(skv.serveShards[command.Shard])-1])
 	}
-	targetChunk.Size += commandSize
+	targetChunk.Size = targetChunk.Size + commandSize
 
 	targetChunk.KVStore[command.Key] = newValue
 	return prevValue, prevExists

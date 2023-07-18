@@ -407,7 +407,7 @@ func (skv *ShardKV) checkServing(command *ShardKVCommand) bool {
 		reply = skv.getFakeReply(command)
 		reply.WaitForUpdate = true
 		reply.ErrorMsg = "current config serves command.Shard, but serveMap may have not received the shard yet"
-		skv.tempDPrintf("WaitForUpdate: skv.Config: %v, skv.ShardIDs: %v, ")
+		skv.tempDPrintf("WaitForUpdate: skv.config: %v, skv.serveShardIDs: %v, ", skv.config, skv.serveShardIDs)
 		go skv.sendReply(reply)
 		return false
 	}
@@ -541,12 +541,12 @@ func (skv *ShardKV) shadowShardInspector() {
 			continue
 		}
 		skv.mu.Lock()
-		for _, group := range skv.shadowShardGroups {
-			if !group.Processing {
-				skv.moveShardDPrintf("shadowShardInspector gets a shardGroup with no thread processing: %v\n", group)
-				go skv.transmitToGroup(group)
+		for index := range skv.shadowShardGroups {
+			if !skv.shadowShardGroups[index].Processing {
+				skv.moveShardDPrintf("shadowShardInspector gets a shardGroup with no thread processing: %v\n", skv.shadowShardGroups[index])
+				go skv.transmitToGroup(index)
 			}
-			group.Processing = true
+			skv.shadowShardGroups[index].Processing = true
 		}
 
 		if skv.killed() {

@@ -191,7 +191,7 @@ type TransmitShardCommand struct {
 	// KVstore or chunked Cached replies
 	IsKVData bool
 	// GID of the transmit end
-	GID int
+	FromGID int
 	// configNum of the config of the transmit end
 	ConfigNum int
 	// the transmit shard
@@ -284,7 +284,7 @@ type TransmitShardArgs struct {
 	// KVstore or chunked Cached replies
 	IsKVData bool
 	// GID of the transmit end
-	GID int
+	FromGID int
 	// configNum of the config of the transmit end
 	ConfigNum int
 	// the transmit shard
@@ -299,7 +299,7 @@ type TransmitShardReply struct {
 	TransmitNum int
 	ChunkNum    int
 	IsKVData    bool
-	GID         int
+	FromGID     int
 	ConfigNum   int
 	Shard       int
 
