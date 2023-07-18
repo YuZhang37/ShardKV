@@ -554,6 +554,7 @@ func (skv *ShardKV) shadowShardInspector() {
 		}
 		skv.mu.Unlock()
 	}
+	skv.moveShardDPrintf("shadowShardInspector quit!")
 }
 
 // the tester calls Kill() when a ShardKV instance won't

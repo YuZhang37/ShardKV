@@ -102,7 +102,7 @@ func TestJoinLeave(t *testing.T) {
 
 	Temp2DPrintf("before cfg.join(0)")
 	cfg.join(0)
-	Temp2DPrintf("cfg.join(0)")
+	Temp2DPrintf("after cfg.join(0)")
 
 	n := 10
 	ka := make([]string, n)
@@ -116,8 +116,9 @@ func TestJoinLeave(t *testing.T) {
 		check(t, ck, ka[i], va[i])
 	}
 
+	Temp2DPrintf("before cfg.join(1)")
 	cfg.join(1)
-	Temp2DPrintf("cfg.join(1)")
+	Temp2DPrintf("after cfg.join(1)")
 
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
@@ -128,9 +129,10 @@ func TestJoinLeave(t *testing.T) {
 
 	Temp2DPrintf("before cfg.leave(0)")
 	cfg.leave(0)
-	Temp2DPrintf("cfg.leave(0)")
+	Temp2DPrintf("after cfg.leave(0)")
 
 	for i := 0; i < n; i++ {
+		Temp2DPrintf("check i: %v, ka[i] %v: va[i] %v\n", i, ka[i], va[i])
 		check(t, ck, ka[i], va[i])
 		x := randstring(5)
 		ck.Append(ka[i], x)

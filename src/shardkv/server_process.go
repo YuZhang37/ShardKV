@@ -288,7 +288,7 @@ func (skv *ShardKV) putAppendOp(command *ShardKVCommand) (string, bool) {
 	}
 	var newValue string = command.Value
 	if command.Operation == APPEND && prevExists {
-		newValue += prevValue
+		newValue = prevValue + newValue
 	}
 	commandSize := unsafe.Sizeof(command.Key + newValue)
 	for index, chunk := range skv.serveShards[command.Shard] {

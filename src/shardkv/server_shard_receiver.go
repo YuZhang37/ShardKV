@@ -124,6 +124,7 @@ func (skv *ShardKV) getTransmitShardCommand(args *TransmitShardArgs, reply *Tran
 		FromGID:     args.FromGID,
 		ConfigNum:   args.ConfigNum,
 		Shard:       args.Shard,
+		IsLastChunk: args.IsLastChunk,
 	}
 	if command.IsKVData {
 		command.ShardKVStoreChunk = ChunkKVStore{
