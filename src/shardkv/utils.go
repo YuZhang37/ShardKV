@@ -51,7 +51,7 @@ func (skv *ShardKV) moveShardDPrintf(format string, a ...interface{}) (n int, er
 
 func (skv *ShardKV) snapshotDPrintf(leaderId int, format string, a ...interface{}) (n int, err error) {
 	// if SnapshotDebug && (leaderId == skv.me || FollowerDebug) {
-	if SnapshotDebug && (leaderId == skv.me || FollowerDebug) {
+	if SnapshotDebug {
 		prefix := fmt.Sprintf("Group: %v: ShardKVServer: %v ", skv.gid, skv.me)
 		log.Printf(prefix+format, a...)
 	}

@@ -381,7 +381,10 @@ func TestSnapshot(t *testing.T) {
 }
 
 /*
+	... Passed
+
 PASS
+ok      6.5840/shardkv  15.681s
 */
 func TestMissChange(t *testing.T) {
 	fmt.Printf("Test: servers miss configuration changes...\n")
@@ -470,21 +473,25 @@ func TestMissChange(t *testing.T) {
 }
 
 /*
---- FAIL: TestConcurrent1 (5.05s)
+--- FAIL: TestConcurrent1 (5.12s)
 
-	test_test.go:19: Get(3): expected:
-	    SV7ODCXdCrn0FA8ZyLdh86EC4k771eYTTsojvA1Lga3qUwtlKjwJv8JGGUf0bwLecwQVXeI4C14PuSBrgItqnTlnhShhnAinb5O8uYYUls2HERl7Z9IwyjGUBTcq5AsTK31pAoyqcPRXQgLfEgfMyjfFZr27lgcBVbhEN
+	test_test.go:19: Get(0): expected:
+	    xIWjza1SZzlLrIKKhr4ZFpZNjI8d4XnsjDiGW2i3pHlDjKMql1DPBrGu_FmfWajeXw_nT5ebfY-qPuysQrV-zMZd7hBg5_dThwC0mntY7aPmBCeqHKTScrPsZ_oIdHHyOQSt76OUUTKmvSGGr49_Rz
 	    received:
-	    SV7ODCXdCrn0FA8ZyLdh86EC4k771eYTTsojvA1Lga3qUwtlKjwJv8JGGUf0bwLecwQVXeI4C14PuSBrgItqnTlnhShhnAinb5O8uYYUls2HERl7Z9IwyjGUBTcq5AsTK31pAoy1pAoyqcPRXQgLfEgfMyjfFZr27lgcBVbhEN
+	    xIWjza1SZzlLrIKKhr4ZFpZNjI8d4XnsjDiGW2i3pHlDjKMql1DPBrGu_FmfWajeXw_nT5ebfY-qPuysQrV-zMZd7hBg5_dThwC0mntY7aPmBCeqHKTScrPsZ_oIdHHyOQSt76OUUTKmvSGGrvSGGr49_Rz
 
 FAIL
 exit status 1
-FAIL    6.5840/shardkv  5.185s
+FAIL    6.5840/shardkv  5.403s
+
+2nd run:
+PASS
+ok      6.5840/shardkv  6.343s
 */
 func TestConcurrent1(t *testing.T) {
 	fmt.Printf("Test: concurrent puts and configuration changes...\n")
 
-	cfg := make_config(t, 3, false, 100)
+	cfg := make_config(t, 3, false, -1)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -559,9 +566,27 @@ func TestConcurrent1(t *testing.T) {
 }
 
 /*
-2023/07/18 18:11:03 Fatal: remove shard 2 from group 102 error: group.Shards[0]: 3 != command.Shard
+--- FAIL: TestConcurrent2 (14.57s)
+
+	test_test.go:19: Get(0): expected:
+	    y2WJ_WYwa7W4NBS9cUivfpV-CgPid7QmgO23Pgf6hQRatH
+	    received:
+	    y2WJ_WYwa7W4NBS9cUivfpQRatH
+
+FAIL
 exit status 1
-FAIL    6.5840/shardkv  5.619s
+FAIL    6.5840/shardkv  14.858s
+
+--- FAIL: TestConcurrent2 (14.71s)
+    test_test.go:19: Get(0): expected:
+        s1sVfIuyYl7YQIgoEwy3BC8FgQmU1vhS310CPLRtHl21YqAcD-wk
+        received:
+        s1sVfIuyYl7YQIgoEwy3BC8FgQmUqAcD-wk
+    testing.go:1446: race detected during execution of test
+FAIL
+exit status 1
+FAIL    6.5840/shardkv  14.922s
+
 */
 // this tests the various sources from which a re-starting
 // group might need to fetch shard contents.
@@ -637,14 +662,34 @@ func TestConcurrent2(t *testing.T) {
 }
 
 /*
-2023/07/18 18:11:30 Fatal: remove shard 5 from group 102 error: group.Shards[0]: 7 != command.Shard
+no snapshot:
+--- FAIL: TestConcurrent3 (18.98s)
+
+	test_test.go:19: Get(0): expected:
+	    tsw3fqcF0OVyi4IOdFBMbP0yHqJ0dKUPPXIoNlsCK
+	    received:
+	    tsw3fqcF0OVyi4IOdFBMbP0yHqJ0dKUPPXIoK
+
+FAIL
 exit status 1
-FAIL    6.5840/shardkv  4.125s
+FAIL    6.5840/shardkv  19.142s
+
+--- FAIL: TestConcurrent3 (19.03s)
+
+	test_test.go:19: Get(0): expected:
+	    7tDSXf2T4KDDWgl8FrHpehpDQ
+	    received:
+	    7tDSXf2T4KDDWpDQ
+	testing.go:1446: race detected during execution of test
+
+FAIL
+exit status 1
+FAIL    6.5840/shardkv  19.184s
 */
 func TestConcurrent3(t *testing.T) {
 	fmt.Printf("Test: concurrent configuration change and restart...\n")
 
-	cfg := make_config(t, 3, false, 300)
+	cfg := make_config(t, 3, false, -1)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -710,8 +755,10 @@ func TestConcurrent3(t *testing.T) {
 }
 
 /*
+	... Passed
+
 PASS
-ok      6.5840/shardkv  9.974s
+ok      6.5840/shardkv  11.336s
 */
 func TestUnreliable1(t *testing.T) {
 	fmt.Printf("Test: unreliable 1...\n")
@@ -756,20 +803,25 @@ func TestUnreliable1(t *testing.T) {
 }
 
 /*
---- FAIL: TestUnreliable2 (7.40s)
-    test_test.go:19: Get(0): expected:
-        00lB7dqB0mGT2TBfUKvEBTyRVBOgAgw1SLoh6448_a2phsEsT1XSkG72FsN6RiIOUy1Puc3-_DiuAqkb2_quqc2LrL9uHeO3UP-6xoJa5
+--- FAIL: TestUnreliable2 (7.17s)
+    test_test.go:19: Get(8): expected:
+        Ec4Ni5JVpWdDusYtco2LaBsXhotHX1-jNvOkHv7G3PY6G
         received:
-        00lB7dqB0mGT2TBfUKvEBTyRVBOgAgw1SLoh6448_a2phsEsT1XSkG7XSkG72FsN6RiIOUy1Puc3-_DiuAqkb2_quqc2LrL9uHeO3UP-6xoJa5
+        Ec4Ni5JVpWdDusYtco2LaBsXhaBsXhotHX1-jNvOkHv7G3PY6G
 FAIL
 exit status 1
-FAIL    6.5840/shardkv  7.869s
+FAIL    6.5840/shardkv  7.312s
+
+no snapshot:
+  ... Passed
+PASS
+ok      6.5840/shardkv  8.313s
 */
 
 func TestUnreliable2(t *testing.T) {
 	fmt.Printf("Test: unreliable 2...\n")
 
-	cfg := make_config(t, 3, true, 1000)
+	cfg := make_config(t, 3, true, -1)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -830,14 +882,16 @@ func TestUnreliable2(t *testing.T) {
 }
 
 /*
-2023/07/18 18:13:36 sendToServers() sent to 1, got tempReply: {553540284298082885 7 6 0 false false true false  false current config serves command.Shard, but serveMap may have not received the shard yet} for args: &{553540284298082885 7 6 0 Append 2 AP-eh}
-^Csignal: interrupt
-FAIL    6.5840/shardkv  43.439s
+infinite loop
+
+no snapshot
+PASS
+ok      6.5840/shardkv  7.969s
 */
 func TestUnreliable3(t *testing.T) {
 	fmt.Printf("Test: unreliable 3...\n")
 
-	cfg := make_config(t, 3, true, 1000)
+	cfg := make_config(t, 3, true, -1)
 	defer cfg.cleanup()
 
 	begin := time.Now()
@@ -940,11 +994,19 @@ func TestUnreliable3(t *testing.T) {
 }
 
 /*
---- FAIL: TestChallenge1Delete (18.32s)
-    test_test.go:1016: snapshot + persisted Raft state are too big: 1519720 > 117000
+--- FAIL: TestChallenge1Delete (19.67s)
+    test_test.go:1020: snapshot + persisted Raft state are too big: 1549790 > 117000
 FAIL
 exit status 1
-FAIL    6.5840/shardkv  18.589s
+FAIL    6.5840/shardkv  19.956s
+
+no snapshot
+--- FAIL: TestChallenge1Delete (22.95s)
+    test_test.go:1020: snapshot + persisted Raft state are too big: 1021467 > 117000
+FAIL
+exit status 1
+FAIL    6.5840/shardkv  23.238s
+
 */
 // optional test to see whether servers are deleting
 // shards for which they are no longer responsible.
@@ -952,7 +1014,7 @@ func TestChallenge1Delete(t *testing.T) {
 	fmt.Printf("Test: shard deletion (challenge 1) ...\n")
 
 	// "1" means force snapshot after every log entry.
-	cfg := make_config(t, 3, false, 1000)
+	cfg := make_config(t, 3, false, -1)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -1030,11 +1092,10 @@ func TestChallenge1Delete(t *testing.T) {
 }
 
 /*
-2023/07/18 18:15:01 sendToServers() sent to 0, got tempReply: {0 0 0 0 false false false false  false } for args: &{2824114484671746710 17 3 4 Get 0 } got disconnected
-2023/07/18 18:15:01 Group: 102: ShardKVServer: 2 configChecker sends query...
-2023/07/18 18:15:01 Group: 101: ShardKVServer: 2 configChecker queries newConfig: {4 [101 101 101 101 101 101 101 101 101 101] map[101:[server-101-0 server-101-1 server-101-2]] []}, old config: {4 [101 101 101 101 101 101 101 101 101 101] map[101:[server-101-0 server-101-1 server-101-2]] []}
-^Csignal: interrupt
-FAIL    6.5840/shardkv  21.047s
+infinite loop
+
+infinite loop
+even for no snapshot
 */
 // optional test to see whether servers can handle
 // shards that are not affected by a config change
@@ -1042,7 +1103,7 @@ FAIL    6.5840/shardkv  21.047s
 func TestChallenge2Unaffected(t *testing.T) {
 	fmt.Printf("Test: unaffected shard access (challenge 2) ...\n")
 
-	cfg := make_config(t, 3, true, 1000)
+	cfg := make_config(t, 3, true, -1)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -1073,7 +1134,7 @@ func TestChallenge2Unaffected(t *testing.T) {
 	// Wait for migration to new config to complete, and for clients to
 	// start using this updated config. Gets to any key k such that
 	// owned[shard(k)] == true should now be served by group 101.
-	<-time.After(1 * time.Second)
+	<-time.After(3 * time.Second)
 	for i := 0; i < n; i++ {
 		if owned[i] {
 			va[i] = "101"
@@ -1089,7 +1150,7 @@ func TestChallenge2Unaffected(t *testing.T) {
 	cfg.leave(0)
 
 	// Wait to make sure clients see new config
-	<-time.After(1 * time.Second)
+	<-time.After(3 * time.Second)
 
 	// And finally: check that gets/puts for 101-owned keys still complete
 	for i := 0; i < n; i++ {
@@ -1105,13 +1166,12 @@ func TestChallenge2Unaffected(t *testing.T) {
 }
 
 /*
-2023/07/18 18:15:54 Group: 101: ShardKVServer: 1 RequestHandler() finishes with &{1288654395125121123 12 5 7 false false true false  false current config serves command.Shard, but serveMap may have not received the shard yet}
-2023/07/18 18:15:54 sendToServers() sent to 1, got tempReply: {1288654395125121123 12 5 7 false false true false  false current config serves command.Shard, but serveMap may have not received the shard yet} for args: &{1288654395125121123 12 5 7 Get 1 }
-2023/07/18 18:15:54 Group: 101: ShardKVServer: 1 configChecker queries newConfig: {5 [101 101 101 101 101 101 101 101 101 101] map[101:[server-101-0 server-101-1 server-101-2]] []}, old config: {5 [101 101 101 101 101 101 101 101 101 101] map[101:[server-101-0 server-101-1 server-101-2]] []}
-2023/07/18 18:15:54 Group: 102: ShardKVServer: 1 configChecker sends query...
-2023/07/18 18:15:54 Group: 102: ShardKVServer: 1 configChecker queries newConfig: {5 [101 101 101 101 101 101 101 101 101 101] map[101:[server-101-0 server-101-1 server-101-2]] []}, old config: {5 [101 101 101 101 101 101 101 101 101 101] map[101:[server-101-0 server-101-1 server-101-2]] []}
-^Csignal: interrupt
-FAIL    6.5840/shardkv  21.995s
+infinite loop
+
+no snapshot:
+  ... Passed
+PASS
+ok      6.5840/shardkv  4.788s
 */
 // optional test to see whether servers can handle operations on shards that
 // have been received as a part of a config migration when the entire migration
@@ -1119,7 +1179,7 @@ FAIL    6.5840/shardkv  21.995s
 func TestChallenge2Partial(t *testing.T) {
 	fmt.Printf("Test: partial migration shard access (challenge 2) ...\n")
 
-	cfg := make_config(t, 3, true, 100)
+	cfg := make_config(t, 3, true, -1)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
