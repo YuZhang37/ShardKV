@@ -61,7 +61,7 @@ func (skv *ShardKV) transmitToGroup(index int) {
 				FromGID:     skv.gid,
 				ConfigNum:   configNum,
 				Shard:       shard,
-				ShardChunk:  chunk.KVStore,
+				ShardChunk:  skv.copyShardKVStoreChunk(&chunk).KVStore,
 				IsLastChunk: false,
 			}
 			skv.sendRequestToServers(args, servers)
@@ -79,7 +79,7 @@ func (skv *ShardKV) transmitToGroup(index int) {
 				FromGID:     skv.gid,
 				ConfigNum:   configNum,
 				Shard:       shard,
-				ReplyChunk:  chunk.CachedReplies,
+				ReplyChunk:  skv.copyShardCachedReplyChunk(&chunk).CachedReplies,
 				IsLastChunk: i == len(replyChunks)-1,
 			}
 			skv.sendRequestToServers(args, servers)

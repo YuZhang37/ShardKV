@@ -5,13 +5,13 @@ import (
 	"log"
 )
 
-const TempDebug = true
-const MoveShardDebug = true
-const TransmitSenderDebug = true
-const TransmitHandlerDebug = true
-const SnapshotDebug = true
+const TempDebug = false
+const MoveShardDebug = false
+const TransmitSenderDebug = false
+const TransmitHandlerDebug = false
+const SnapshotDebug = false
 const FollowerDebug = false
-const Temp2Debug = true
+const Temp2Debug = false
 
 func (skv *ShardKV) tempDPrintf(format string, a ...interface{}) (n int, err error) {
 	_, votedFor, _ := skv.rf.GetLeaderId()
