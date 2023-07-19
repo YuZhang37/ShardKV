@@ -140,8 +140,8 @@ func TestJoinLeave(t *testing.T) {
 	}
 
 	// allow time for shards to transfer.
-	time.Sleep(2 * time.Second)
-	Temp2DPrintf("time.Sleep(2 * time.Second)")
+	time.Sleep(1 * time.Second)
+	Temp2DPrintf("time.Sleep(1 * time.Second)")
 
 	cfg.checklogs()
 	cfg.ShutdownGroup(0)

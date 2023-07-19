@@ -40,6 +40,7 @@ import (
 // StartServer() must return quickly, so it should start goroutines
 // for any long-running work.
 func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxRaftState int, gid int, ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.ClientEnd) *ShardKV {
+	TempDPrintf("Start ShardKV Server: me: %v, maxRaftState: %v, gid: %v\n", me, maxRaftState, gid)
 	labgob.Register(ShardKVCommand{})
 	labgob.Register(ConfigUpdateCommand{})
 	labgob.Register(TransmitShardCommand{})
@@ -205,7 +206,7 @@ func (skv *ShardKV) startCommit(command interface{}) (int, int, bool) {
 				When this server re-joins the group, the client will give up this server and re-try other servers.
 				The model is that:  the client always isolated with the server it can contact.
 			*/
-			time.Sleep(time.Duration(CHECKTIMEOUT) * time.Millisecond)
+			time.Sleep(time.Duration(CHECKLOGTIMEOUT) * time.Millisecond)
 			if skv.killed() {
 				return -1, -1, false
 			}
@@ -229,7 +230,7 @@ func (skv *ShardKV) waitReply(clerkChan chan RequestReply, args *RequestArgs, re
 				quit = true
 				skv.tempDPrintf("RequestHandler() succeeds with %v\n", reply)
 			}
-		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
+		case <-time.After(time.Duration(CHECKLEADERTIMEOUT) * time.Millisecond):
 			isValidLeader := skv.rf.IsValidLeader()
 			if skv.killed() || !isValidLeader {
 				quit = true
@@ -265,7 +266,7 @@ func (skv *ShardKV) commandExecutor() {
 			} else {
 				skv.processCommand(msg.CommandIndex, msg.CommandTerm, msg.Command)
 			}
-		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
+		case <-time.After(time.Duration(CHECKLEADERTIMEOUT) * time.Millisecond):
 			if skv.killed() {
 				quit = true
 			}
@@ -447,7 +448,7 @@ func (skv *ShardKV) sendReply(reply *RequestReply) {
 	for !quit {
 		select {
 		case clerkChan <- *reply:
-		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
+		case <-time.After(time.Duration(CHECKLEADERTIMEOUT) * time.Millisecond):
 			isValidLeader := skv.rf.IsValidLeader()
 			if skv.killed() || !isValidLeader {
 				quit = true
@@ -473,14 +474,14 @@ func (skv *ShardKV) snapshotController() {
 				select {
 				case skv.rf.SnapshotChan <- snapshot:
 					quit1 = true
-				case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
+				case <-time.After(time.Duration(CHECKLEADERTIMEOUT) * time.Millisecond):
 					if skv.killed() {
 						quit1 = true
 						quit = true
 					}
 				}
 			}
-		case <-time.After(time.Duration(CHECKTIMEOUT) * time.Millisecond):
+		case <-time.After(time.Duration(CHECKLEADERTIMEOUT) * time.Millisecond):
 			if skv.killed() {
 				quit = true
 			}
@@ -489,7 +490,7 @@ func (skv *ShardKV) snapshotController() {
 }
 
 /*
-every CHECKTIMEOUT, this thread issues a Query(-1)
+every CHECKCONFIGTIMEOUT, this thread issues a Query(-1)
 if the resulting Config has larger configNum than skv.config
 then issues a MetaUpdateCommand
 */

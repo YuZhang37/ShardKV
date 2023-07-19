@@ -5,7 +5,7 @@ import (
 	"log"
 )
 
-const TempDebug = false
+const TempDebug = true
 const MoveShardDebug = true
 const TransmitSenderDebug = true
 const TransmitHandlerDebug = true
