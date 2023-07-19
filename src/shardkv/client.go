@@ -61,6 +61,10 @@ func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 	return ck
 }
 
+/*
+the server receives configNum == 0?
+*/
+
 func (ck *Clerk) Get(key string) string {
 	ck.seqNum++
 	args := RequestArgs{
@@ -130,10 +134,10 @@ func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
 			log.Fatalf("Clerk Config %v doesn't have gid: %v\n", ck.config, gid)
 		}
 		reply = ck.sendToServers(args, servers)
-		if reply.WrongGroup {
+		if !reply.Succeeded {
 			// ask controler for the latest configuration.
 			ck.config = ck.sc.Query(-1)
-			TempDPrintf("Args: %v, sends to the wrong group: %v, get new config: %v\n", args, gid, ck.config)
+			TempDPrintf("Args: %v, sends to the wrong group: %v, get reply: %v, new config: %v\n", args, gid, reply, ck.config)
 		} else {
 			// Succeeded
 			quit = true
@@ -150,36 +154,32 @@ when returns, it must be the case that the request is succeeded
 or the request sends to a wrong group
 */
 func (ck *Clerk) sendToServers(args *RequestArgs, servers []*labrpc.ClientEnd) RequestReply {
-	quit := false
-	leaderId := mathRand.Intn(len(servers))
 	var reply RequestReply
-	for !quit {
+	for server := 0; server < len(servers); server++ {
 		tempReply := RequestReply{}
-		ok := servers[leaderId].Call("ShardKV.RequestHandler", args, &tempReply)
-		TempDPrintf("sendToServers() sent to %v, got tempReply: %v for args: %v\n", leaderId, tempReply, args)
+		ok := servers[server].Call("ShardKV.RequestHandler", args, &tempReply)
+		TempDPrintf("sendToServers() sent to %v, got tempReply: %v for args: %v\n", server, tempReply, args)
 		if !ok {
 			// failed server or network disconnection
-			TempDPrintf("sendToServers() sent to %v, got tempReply: %v for args: %v got disconnected\n", leaderId, tempReply, args)
-			leaderId = mathRand.Intn(len(servers))
-			continue
+			TempDPrintf("sendToServers() sent to %v, got tempReply: %v for args: %v got disconnected\n", server, tempReply, args)
 		}
 
 		if tempReply.WrongGroup || tempReply.Succeeded {
 			// contact wrong group or
 			// the raft server commits and kvServer applies
-			quit = true
 			reply = tempReply
 		} else if tempReply.WaitForUpdate {
 			// the server is a leader server, but the server hasn't updated the config to args.ConfigNum yet
 			time.Sleep(time.Duration(CHECKCONFIGTIMEOUT) * time.Millisecond)
+			server--
 		} else {
 			// contact a non-leader server
 			// or a leader server with size too large
 			if tempReply.SizeExceeded {
 				log.Fatalf("command is too large, max allowed command size is %v\n", MAXKVCOMMANDSIZE)
 			}
-			TempDPrintf("sendToServers() sent to leader %v, got tempReply: %v for args: %v not successful\n", leaderId, tempReply, args)
-			leaderId = mathRand.Intn(len(servers))
+			TempDPrintf("sendToServers() sent to leader %v, got tempReply: %v for args: %v not successful\n", server, tempReply, args)
+			server = mathRand.Intn(len(servers))
 		}
 	}
 	TempDPrintf("sendToServers() finishes with %v\n", reply)

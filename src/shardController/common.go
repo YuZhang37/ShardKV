@@ -57,7 +57,7 @@ type Clerk struct {
 /************** definition for controller server *************/
 
 // The number of shards.
-const NShards = 100
+const NShards = 10
 
 type GroupInfo struct {
 	GID        int

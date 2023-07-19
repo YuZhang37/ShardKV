@@ -129,7 +129,8 @@ type Raft struct {
 	peers     []*labrpc.ClientEnd // RPC end points of all peers
 	persister *Persister          // Object to hold this peer's persisted state
 	me        int                 // this peer's index into peers[]
-	dead      int32               // set by Kill()
+	gid       int
+	dead      int32 // set by Kill()
 	applyCh   chan ApplyMsg
 
 	SignalSnapshot chan int

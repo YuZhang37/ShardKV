@@ -27,6 +27,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
+	rf.gid = -1
 	rf.dead = 0
 	rf.applyCh = applyCh
 
@@ -36,6 +37,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		rf.maxRaftState = opts[0].(int)
 	} else {
 		rf.maxRaftState = -1
+	}
+	if len(opts) > 1 {
+		rf.gid = opts[1].(int)
 	}
 
 	if rf.maxRaftState != -1 {

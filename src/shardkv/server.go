@@ -57,7 +57,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	skv.controllerSeqNum = 1
 
 	skv.applyCh = make(chan raft.ApplyMsg)
-	skv.rf = raft.Make(servers, me, persister, skv.applyCh)
+	skv.rf = raft.Make(servers, me, persister, skv.applyCh, skv.maxRaftState, skv.gid)
 	skv.serveShardIDs = make(map[int]bool)
 	skv.serveShards = make(map[int][]ChunkKVStore)
 	skv.receivingShards = make(map[int][]ChunkKVStore)
@@ -301,12 +301,14 @@ func (skv *ShardKV) processCommand(commandIndex int, commandTerm int, commandFro
 	configUpdateCommand, isConfigUpdateCommand := commandFromRaft.(ConfigUpdateCommand)
 	if isConfigUpdateCommand {
 		skv.processConfigUpdate(configUpdateCommand)
+		// no need to copy configUpdateCommand, it's read only
 		return
 	}
 
 	// check command is TransmitShardCommand
 	transmitShardCommand, isTransmitShardCommand := commandFromRaft.(TransmitShardCommand)
 	if isTransmitShardCommand {
+		// need to copy the maps inside
 		skv.processTransmitShard(transmitShardCommand)
 		return
 	}

@@ -140,8 +140,8 @@ func TestJoinLeave(t *testing.T) {
 	}
 
 	// allow time for shards to transfer.
-	time.Sleep(1 * time.Second)
-	Temp2DPrintf("time.Sleep(1 * time.Second)")
+	time.Sleep(2 * time.Second)
+	Temp2DPrintf("time.Sleep(2 * time.Second)")
 
 	cfg.checklogs()
 	cfg.ShutdownGroup(0)
@@ -221,6 +221,11 @@ func TestSnapshot(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
+/*
+2023/07/18 18:09:33 Fatal: remove shard 2 from group 100 error: group.Shards[0]: 3 != command.Shard
+exit status 1
+FAIL    6.5840/shardkv  19.577s
+*/
 func TestMissChange(t *testing.T) {
 	fmt.Printf("Test: servers miss configuration changes...\n")
 
@@ -307,6 +312,11 @@ func TestMissChange(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
+/*
+2023/07/18 18:10:35 Fatal: remove shard 4 from group 102 error: len(group.Shards) == 0
+exit status 1
+FAIL    6.5840/shardkv  2.958s
+*/
 func TestConcurrent1(t *testing.T) {
 	fmt.Printf("Test: concurrent puts and configuration changes...\n")
 
@@ -384,6 +394,11 @@ func TestConcurrent1(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
+/*
+2023/07/18 18:11:03 Fatal: remove shard 2 from group 102 error: group.Shards[0]: 3 != command.Shard
+exit status 1
+FAIL    6.5840/shardkv  5.619s
+*/
 // this tests the various sources from which a re-starting
 // group might need to fetch shard contents.
 func TestConcurrent2(t *testing.T) {
@@ -457,6 +472,11 @@ func TestConcurrent2(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
+/*
+2023/07/18 18:11:30 Fatal: remove shard 5 from group 102 error: group.Shards[0]: 7 != command.Shard
+exit status 1
+FAIL    6.5840/shardkv  4.125s
+*/
 func TestConcurrent3(t *testing.T) {
 	fmt.Printf("Test: concurrent configuration change and restart...\n")
 
@@ -525,6 +545,11 @@ func TestConcurrent3(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
+/*
+2023/07/18 18:11:56 Fatal: remove shard 2 from group 102 error: group.Shards[0]: 3 != command.Shard
+exit status 1
+FAIL    6.5840/shardkv  3.720s
+*/
 func TestUnreliable1(t *testing.T) {
 	fmt.Printf("Test: unreliable 1...\n")
 
@@ -566,6 +591,12 @@ func TestUnreliable1(t *testing.T) {
 
 	fmt.Printf("  ... Passed\n")
 }
+
+/*
+2023/07/18 18:12:21 Fatal: remove shard 4 from group 102 error: group.Shards[0]: 2 != command.Shard
+exit status 1
+FAIL    6.5840/shardkv  4.306s
+*/
 
 func TestUnreliable2(t *testing.T) {
 	fmt.Printf("Test: unreliable 2...\n")
@@ -630,6 +661,11 @@ func TestUnreliable2(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
+/*
+2023/07/18 18:13:36 sendToServers() sent to 1, got tempReply: {553540284298082885 7 6 0 false false true false  false current config serves command.Shard, but serveMap may have not received the shard yet} for args: &{553540284298082885 7 6 0 Append 2 AP-eh}
+^Csignal: interrupt
+FAIL    6.5840/shardkv  43.439s
+*/
 func TestUnreliable3(t *testing.T) {
 	fmt.Printf("Test: unreliable 3...\n")
 
@@ -735,6 +771,11 @@ func TestUnreliable3(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
+/*
+2023/07/18 18:14:17 Fatal: remove shard 6 from group 102 error: group.Shards[0]: 7 != command.Shard
+exit status 1
+FAIL    6.5840/shardkv  2.999s
+*/
 // optional test to see whether servers are deleting
 // shards for which they are no longer responsible.
 func TestChallenge1Delete(t *testing.T) {
@@ -818,6 +859,13 @@ func TestChallenge1Delete(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
+/*
+2023/07/18 18:15:01 sendToServers() sent to 0, got tempReply: {0 0 0 0 false false false false  false } for args: &{2824114484671746710 17 3 4 Get 0 } got disconnected
+2023/07/18 18:15:01 Group: 102: ShardKVServer: 2 configChecker sends query...
+2023/07/18 18:15:01 Group: 101: ShardKVServer: 2 configChecker queries newConfig: {4 [101 101 101 101 101 101 101 101 101 101] map[101:[server-101-0 server-101-1 server-101-2]] []}, old config: {4 [101 101 101 101 101 101 101 101 101 101] map[101:[server-101-0 server-101-1 server-101-2]] []}
+^Csignal: interrupt
+FAIL    6.5840/shardkv  21.047s
+*/
 // optional test to see whether servers can handle
 // shards that are not affected by a config change
 // while the config change is underway
@@ -886,6 +934,15 @@ func TestChallenge2Unaffected(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
+/*
+2023/07/18 18:15:54 Group: 101: ShardKVServer: 1 RequestHandler() finishes with &{1288654395125121123 12 5 7 false false true false  false current config serves command.Shard, but serveMap may have not received the shard yet}
+2023/07/18 18:15:54 sendToServers() sent to 1, got tempReply: {1288654395125121123 12 5 7 false false true false  false current config serves command.Shard, but serveMap may have not received the shard yet} for args: &{1288654395125121123 12 5 7 Get 1 }
+2023/07/18 18:15:54 Group: 101: ShardKVServer: 1 configChecker queries newConfig: {5 [101 101 101 101 101 101 101 101 101 101] map[101:[server-101-0 server-101-1 server-101-2]] []}, old config: {5 [101 101 101 101 101 101 101 101 101 101] map[101:[server-101-0 server-101-1 server-101-2]] []}
+2023/07/18 18:15:54 Group: 102: ShardKVServer: 1 configChecker sends query...
+2023/07/18 18:15:54 Group: 102: ShardKVServer: 1 configChecker queries newConfig: {5 [101 101 101 101 101 101 101 101 101 101] map[101:[server-101-0 server-101-1 server-101-2]] []}, old config: {5 [101 101 101 101 101 101 101 101 101 101] map[101:[server-101-0 server-101-1 server-101-2]] []}
+^Csignal: interrupt
+FAIL    6.5840/shardkv  21.995s
+*/
 // optional test to see whether servers can handle operations on shards that
 // have been received as a part of a config migration when the entire migration
 // has not yet completed.

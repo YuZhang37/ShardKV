@@ -25,6 +25,7 @@ func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
 		skv.tempDPrintf("Config with configNum: %v <= current config.Num: %v, return\n", command.Config.Num, skv.config.Num)
 		return
 	}
+	skv.tempDPrintf("ShardKV %v receives valid ConfigUpdateCommand: %v\n", skv.me, command)
 	skv.controllerSeqNum = skv.controllerSeqNum + 1
 	skv.config = command.Config
 	if len(skv.config.AssignedShards) > 0 {
@@ -38,7 +39,7 @@ func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
 			skv.shardLocks[shard].Lock()
 			delete(skv.serveShardIDs, shard)
 			skv.moveShardToShadow(shard, skv.serveShards, skv.serveCachedReplies)
-			skv.moveShardDPrintf("after moveShardToShadow() updates group for shard: %v, shadowGroups: %v\n", shard, skv.shadowShardGroups)
+			skv.moveShardDPrintf("after moveShardToShadow() updating group for shard: %v, shadowGroups: %v\n", shard, skv.shadowShardGroups)
 			skv.shardLocks[shard].Unlock()
 		}
 	}
@@ -113,7 +114,7 @@ func (skv *ShardKV) processTransmitShard(command TransmitShardCommand) {
 			shardKVStore = make([]ChunkKVStore, 0)
 			skv.receivingShards[command.Shard] = shardKVStore
 		}
-		skv.receivingShards[command.Shard] = append(shardKVStore, command.ShardKVStoreChunk)
+		skv.receivingShards[command.Shard] = append(shardKVStore, skv.copyShardKVStoreChunk(&command.ShardKVStoreChunk))
 
 	} else {
 		var shardCachedReply []ChunkedCachedReply
@@ -122,7 +123,7 @@ func (skv *ShardKV) processTransmitShard(command TransmitShardCommand) {
 			shardCachedReply = make([]ChunkedCachedReply, 0)
 			skv.receivingCachedReplies[command.Shard] = shardCachedReply
 		}
-		skv.receivingCachedReplies[command.Shard] = append(shardCachedReply, command.ShardCachedReplyChunk)
+		skv.receivingCachedReplies[command.Shard] = append(shardCachedReply, skv.copyShardCachedReplyChunk(&command.ShardCachedReplyChunk))
 	}
 
 	// if the command is executed, the command has the latest TransmitNum and ChunkNum
@@ -138,6 +139,28 @@ func (skv *ShardKV) processTransmitShard(command TransmitShardCommand) {
 		skv.forwardReceivingChunks(command.ConfigNum, command.Shard)
 	}
 	skv.moveShardDPrintf("processTransmitShard() finishes TransmitShardCommand: %v\n", command)
+}
+
+func (skv *ShardKV) copyShardKVStoreChunk(chunk *ChunkKVStore) ChunkKVStore {
+	newChunk := ChunkKVStore{
+		Size:    chunk.Size,
+		KVStore: make(map[string]string),
+	}
+	for key, value := range chunk.KVStore {
+		newChunk.KVStore[key] = value
+	}
+	return newChunk
+}
+
+func (skv *ShardKV) copyShardCachedReplyChunk(chunk *ChunkedCachedReply) ChunkedCachedReply {
+	newChunk := ChunkedCachedReply{
+		Size:          chunk.Size,
+		CachedReplies: map[int64]RequestReply{},
+	}
+	for key, value := range chunk.CachedReplies {
+		newChunk.CachedReplies[key] = value
+	}
+	return newChunk
 }
 
 // skv.mu and shardLocks[shard] are held
@@ -329,6 +352,8 @@ func (skv *ShardKV) processSnapshot(snapshotIndex int, snapshotTerm int, snapsho
 
 /*
 must be called with skv.mu.Lock
+if skv.mu.Lock is held, no threads will make changes to these fields, no race condition
+read is allowed
 */
 func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 	reader := bytes.NewBuffer(snapshot)
@@ -384,6 +409,8 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 
 /*
 must be called with skv.mu.Lock
+if skv.mu.Lock is held, no threads will make changes to these fields, no race condition
+read is allowed
 */
 func (skv *ShardKV) encodeSnapshot() []byte {
 	writer := new(bytes.Buffer)

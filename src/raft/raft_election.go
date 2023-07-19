@@ -206,7 +206,7 @@ func (rf *Raft) upgradeToLeader() {
 	TestDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
 	KVStoreDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
 	ShardControllerDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
-	ShardKVDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
+	ShardKVDPrintf("Group: %v, raft %v wins the election at term %v\n", rf.gid, rf.me, rf.currentTerm)
 }
 
 func (rf *Raft) getRequestVoteArgs() RequestVoteArgs {

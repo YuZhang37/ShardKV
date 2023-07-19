@@ -128,11 +128,13 @@ func (skv *ShardKV) getTransmitShardCommand(args *TransmitShardArgs, reply *Tran
 	}
 	if command.IsKVData {
 		command.ShardKVStoreChunk = ChunkKVStore{
+			// the size is a 8-byte pointer, needs to update
 			Size:    unsafe.Sizeof(args.ShardChunk),
 			KVStore: args.ShardChunk,
 		}
 	} else {
 		command.ShardCachedReplyChunk = ChunkedCachedReply{
+			// the size is a 8-byte pointer, needs to update
 			Size:          unsafe.Sizeof(args.ReplyChunk),
 			CachedReplies: args.ReplyChunk,
 		}
