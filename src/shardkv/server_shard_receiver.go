@@ -12,11 +12,9 @@ func (skv *ShardKV) TransmitShardHandler(args *TransmitShardArgs, reply *Transmi
 	if !skv.checkLeaderForTransmit(args, reply) {
 		return
 	}
-	skv.transmitHandlerDPrintf("TransmitShardHandler() checkDupTransmit: %v\n", skv.finishedTransmit[args.FromGID])
 	if skv.checkDupTransmit(args, reply) {
 		return
 	}
-	skv.transmitHandlerDPrintf("TransmitShardHandler() checkOngoingTransmit: %v\n", skv.onGoingTransmit[args.FromGID])
 	if skv.checkOngoingTransmit(args, reply) {
 		if skv.waitCommitted(args) {
 			reply.Succeeded = true
@@ -71,6 +69,7 @@ func (skv *ShardKV) checkLeaderForTransmit(args *TransmitShardArgs, reply *Trans
 func (skv *ShardKV) checkDupTransmit(args *TransmitShardArgs, reply *TransmitShardReply) bool {
 	skv.mu.Lock()
 	defer skv.mu.Unlock()
+	skv.transmitHandlerDPrintf("TransmitShardHandler() checkDupTransmit: %v\n", skv.finishedTransmit[args.FromGID])
 	transmit, exists := skv.finishedTransmit[args.FromGID]
 	if !exists {
 		return false
@@ -95,6 +94,7 @@ func (skv *ShardKV) checkDupTransmit(args *TransmitShardArgs, reply *TransmitSha
 func (skv *ShardKV) checkOngoingTransmit(args *TransmitShardArgs, reply *TransmitShardReply) bool {
 	skv.mu.Lock()
 	defer skv.mu.Unlock()
+	skv.transmitHandlerDPrintf("TransmitShardHandler() checkOngoingTransmit: %v\n", skv.onGoingTransmit[args.FromGID])
 	transmit, exists := skv.onGoingTransmit[args.FromGID]
 	if !exists {
 		return false

@@ -34,7 +34,8 @@ func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
 		skv.tempDPrintf("ShardKV %v finishes initializing for ConfigUpdateCommand, skv.serveShardIDs: %v,\n skv.serveShards: %v,\n skv.serveCachedReplies: %v\n", skv.me, skv.serveShardIDs, skv.serveShards, skv.serveCachedReplies)
 	}
 	sortedShards := skv.sortedKeys(skv.serveShardIDs)
-	for shard := range sortedShards {
+	skv.tempDPrintf("processConfigUpdate(): sortedShards: %v, skv.serveShardIDs: %v\n", sortedShards, skv.serveShardIDs)
+	for _, shard := range sortedShards {
 		if skv.config.Shards[shard] != skv.gid {
 			skv.shardLocks[shard].Lock()
 			delete(skv.serveShardIDs, shard)

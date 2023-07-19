@@ -257,21 +257,18 @@ func TestJoinJoinAndLeaveLeave(t *testing.T) {
 		va[i] += x
 	}
 
-	// time.Sleep(1 * time.Second)
-	// Temp2DPrintf("1 time.Sleep(1 * time.Second)")
-
 	Temp2DPrintf("before cfg.leave(1)\n")
 	cfg.leave(1)
-	// Temp2DPrintf("before cfg.join(0)\n")
-	// cfg.join(0)
+	Temp2DPrintf("before cfg.join(0)\n")
+	cfg.join(0)
 
-	// for i := 0; i < n; i++ {
-	// 	Temp2DPrintf("3 before check i: %v\n", i)
-	// 	check(t, ck, ka[i], va[i])
-	// 	x := randstring(20)
-	// 	ck.Append(ka[i], x)
-	// 	va[i] += x
-	// }
+	for i := 0; i < n; i++ {
+		Temp2DPrintf("3 before check i: %v\n", i)
+		check(t, ck, ka[i], va[i])
+		x := randstring(20)
+		ck.Append(ka[i], x)
+		va[i] += x
+	}
 
 	time.Sleep(1 * time.Second)
 	Temp2DPrintf("1 time.Sleep(1 * time.Second)")
