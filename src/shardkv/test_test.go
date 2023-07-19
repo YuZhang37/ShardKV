@@ -153,14 +153,15 @@ func TestJoinLeave(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
-func TestSnapshot(t *testing.T) {
-	fmt.Printf("Test: snapshots, join, and leave ...\n")
+func TestJoinJoinLeave(t *testing.T) {
+	fmt.Printf("Test: join, join, and leave ...\n")
 
-	cfg := make_config(t, 3, false, 1000)
+	cfg := make_config(t, 3, false, -1)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
 
+	Temp2DPrintf("before cfg.join(0)\n")
 	cfg.join(0)
 
 	n := 30
@@ -172,37 +173,197 @@ func TestSnapshot(t *testing.T) {
 		ck.Put(ka[i], va[i])
 	}
 	for i := 0; i < n; i++ {
+		Temp2DPrintf("1 check i: %v\n", i)
 		check(t, ck, ka[i], va[i])
 	}
-
+	Temp2DPrintf("before cfg.join(1)\n")
 	cfg.join(1)
+	Temp2DPrintf("before cfg.join(2)\n")
 	cfg.join(2)
+	Temp2DPrintf("before cfg.leave(0)\n")
 	cfg.leave(0)
 
 	for i := 0; i < n; i++ {
+		Temp2DPrintf("2 before append i: %v\n", i)
 		check(t, ck, ka[i], va[i])
 		x := randstring(20)
 		ck.Append(ka[i], x)
 		va[i] += x
 	}
 
-	cfg.leave(1)
+	time.Sleep(1 * time.Second)
+	Temp2DPrintf("1 time.Sleep(1 * time.Second)")
+
+	for i := 0; i < n; i++ {
+		check(t, ck, ka[i], va[i])
+	}
+
+	time.Sleep(1 * time.Second)
+	Temp2DPrintf("2 time.Sleep(1 * time.Second)")
+
+	cfg.checklogs()
+
+	cfg.ShutdownGroup(0)
+	cfg.ShutdownGroup(1)
+	cfg.ShutdownGroup(2)
+
+	cfg.StartGroup(0)
+	cfg.StartGroup(1)
+	cfg.StartGroup(2)
+
+	for i := 0; i < n; i++ {
+		check(t, ck, ka[i], va[i])
+	}
+
+	fmt.Printf("  ... Passed\n")
+}
+
+func TestJoinJoinAndLeaveLeave(t *testing.T) {
+	fmt.Printf("Test: join, join, and leave, leave ...\n")
+
+	cfg := make_config(t, 3, false, -1)
+	defer cfg.cleanup()
+
+	ck := cfg.makeClient()
+
+	Temp2DPrintf("before cfg.join(0)\n")
 	cfg.join(0)
+	Temp2DPrintf("after cfg.join(0)\n")
+
+	n := 30
+	ka := make([]string, n)
+	va := make([]string, n)
+	for i := 0; i < n; i++ {
+		ka[i] = strconv.Itoa(i) // ensure multiple shards
+		va[i] = randstring(20)
+		ck.Put(ka[i], va[i])
+	}
+	for i := 0; i < n; i++ {
+		Temp2DPrintf("1 check i: %v\n", i)
+		check(t, ck, ka[i], va[i])
+	}
+	Temp2DPrintf("before cfg.join(1)\n")
+	cfg.join(1)
+	Temp2DPrintf("before cfg.join(2)\n")
+	cfg.join(2)
+	Temp2DPrintf("before cfg.leave(0)\n")
+	cfg.leave(0)
 
 	for i := 0; i < n; i++ {
+		Temp2DPrintf("2 before append i: %v\n", i)
 		check(t, ck, ka[i], va[i])
 		x := randstring(20)
 		ck.Append(ka[i], x)
 		va[i] += x
 	}
 
+	// time.Sleep(1 * time.Second)
+	// Temp2DPrintf("1 time.Sleep(1 * time.Second)")
+
+	Temp2DPrintf("before cfg.leave(1)\n")
+	cfg.leave(1)
+	// Temp2DPrintf("before cfg.join(0)\n")
+	// cfg.join(0)
+
+	// for i := 0; i < n; i++ {
+	// 	Temp2DPrintf("3 before check i: %v\n", i)
+	// 	check(t, ck, ka[i], va[i])
+	// 	x := randstring(20)
+	// 	ck.Append(ka[i], x)
+	// 	va[i] += x
+	// }
+
 	time.Sleep(1 * time.Second)
+	Temp2DPrintf("1 time.Sleep(1 * time.Second)")
 
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
 	}
 
 	time.Sleep(1 * time.Second)
+	Temp2DPrintf("2 time.Sleep(1 * time.Second)")
+
+	cfg.checklogs()
+
+	cfg.ShutdownGroup(0)
+	cfg.ShutdownGroup(1)
+	cfg.ShutdownGroup(2)
+
+	cfg.StartGroup(0)
+	cfg.StartGroup(1)
+	cfg.StartGroup(2)
+
+	for i := 0; i < n; i++ {
+		check(t, ck, ka[i], va[i])
+	}
+
+	fmt.Printf("  ... Passed\n")
+}
+
+func TestSnapshot(t *testing.T) {
+	fmt.Printf("Test: snapshots, join, and leave ...\n")
+
+	cfg := make_config(t, 3, false, -1)
+	defer cfg.cleanup()
+
+	ck := cfg.makeClient()
+
+	Temp2DPrintf("before cfg.join(0)\n")
+	cfg.join(0)
+	Temp2DPrintf("after cfg.join(0)\n")
+
+	n := 30
+	ka := make([]string, n)
+	va := make([]string, n)
+	for i := 0; i < n; i++ {
+		ka[i] = strconv.Itoa(i) // ensure multiple shards
+		va[i] = randstring(20)
+		ck.Put(ka[i], va[i])
+	}
+	for i := 0; i < n; i++ {
+		Temp2DPrintf("1 check i: %v\n", i)
+		check(t, ck, ka[i], va[i])
+	}
+	Temp2DPrintf("before cfg.join(1)\n")
+	cfg.join(1)
+	Temp2DPrintf("before cfg.join(2)\n")
+	cfg.join(2)
+	Temp2DPrintf("before cfg.leave(0)\n")
+	cfg.leave(0)
+
+	for i := 0; i < n; i++ {
+		Temp2DPrintf("2 before append i: %v\n", i)
+		check(t, ck, ka[i], va[i])
+		x := randstring(20)
+		ck.Append(ka[i], x)
+		va[i] += x
+	}
+
+	// time.Sleep(1 * time.Second)
+	// Temp2DPrintf("1 time.Sleep(1 * time.Second)")
+
+	// Temp2DPrintf("before cfg.leave(1)\n")
+	// cfg.leave(1)
+	// Temp2DPrintf("before cfg.join(0)\n")
+	// cfg.join(0)
+
+	// for i := 0; i < n; i++ {
+	// 	Temp2DPrintf("3 before check i: %v\n", i)
+	// 	check(t, ck, ka[i], va[i])
+	// 	x := randstring(20)
+	// 	ck.Append(ka[i], x)
+	// 	va[i] += x
+	// }
+
+	time.Sleep(1 * time.Second)
+	Temp2DPrintf("1 time.Sleep(1 * time.Second)")
+
+	for i := 0; i < n; i++ {
+		check(t, ck, ka[i], va[i])
+	}
+
+	time.Sleep(1 * time.Second)
+	Temp2DPrintf("2 time.Sleep(1 * time.Second)")
 
 	cfg.checklogs()
 

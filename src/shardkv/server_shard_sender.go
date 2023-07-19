@@ -151,12 +151,14 @@ func (skv *ShardKV) removeShardFromShadow(targetGID int, shard int) ShadowShardG
 	group.ConfigNums = group.ConfigNums[1:]
 	group.ShadowShards = group.ShadowShards[1:]
 	group.ShadowCachedReplies = group.ShadowCachedReplies[1:]
-	skv.transmitSenderDPrintf("removeShardFromShadow() after removing group: %v\n", group)
+	returnedGroup := *group
+	skv.transmitSenderDPrintf("removeShardFromShadow() after removing group: %v\n, returnedGroup: %v\n", group, returnedGroup)
 	if len(group.ShardIDs) == 0 {
 		newGroups := skv.shadowShardGroups[:index]
 		newGroups = append(newGroups, skv.shadowShardGroups[index+1:]...)
+		// looks like the pointer of an array element is calculated based on base address + offset.
 		skv.shadowShardGroups = newGroups
 	}
-	skv.transmitSenderDPrintf("removeShardFromShadow() finishes targetGID: %v, shard: %v\n skv.shardowShardGroups", targetGID, shard)
-	return *group
+	skv.transmitSenderDPrintf("removeShardFromShadow() finishes targetGID: %v, shard: %v\n group: %v\n returnedGroup: %v\n skv.shardowShardGroups: %v", targetGID, shard, group, returnedGroup, skv.shadowShardGroups)
+	return returnedGroup
 }
