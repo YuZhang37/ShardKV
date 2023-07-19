@@ -127,15 +127,23 @@ func (skv *ShardKV) getTransmitShardCommand(args *TransmitShardArgs, reply *Tran
 		IsLastChunk: args.IsLastChunk,
 	}
 	if command.IsKVData {
+		size := uintptr(0)
+		for key, value := range args.ShardChunk {
+			size += unsafe.Sizeof(key) + unsafe.Sizeof(value)
+		}
 		command.ShardKVStoreChunk = ChunkKVStore{
 			// the size is a 8-byte pointer, needs to update
-			Size:    unsafe.Sizeof(args.ShardChunk),
+			Size:    size,
 			KVStore: args.ShardChunk,
 		}
 	} else {
+		size := uintptr(0)
+		for key, value := range args.ReplyChunk {
+			size += unsafe.Sizeof(key) + unsafe.Sizeof(value)
+		}
 		command.ShardCachedReplyChunk = ChunkedCachedReply{
 			// the size is a 8-byte pointer, needs to update
-			Size:          unsafe.Sizeof(args.ReplyChunk),
+			Size:          size,
 			CachedReplies: args.ReplyChunk,
 		}
 	}

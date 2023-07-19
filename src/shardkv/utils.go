@@ -9,6 +9,7 @@ const TempDebug = true
 const MoveShardDebug = true
 const TransmitSenderDebug = true
 const TransmitHandlerDebug = true
+const SnapshotDebug = true
 const FollowerDebug = false
 const Temp2Debug = true
 
@@ -42,6 +43,15 @@ func (skv *ShardKV) transmitHandlerDPrintf(format string, a ...interface{}) (n i
 func (skv *ShardKV) moveShardDPrintf(format string, a ...interface{}) (n int, err error) {
 	_, votedFor, _ := skv.rf.GetLeaderId()
 	if MoveShardDebug && (votedFor == skv.me || FollowerDebug) {
+		prefix := fmt.Sprintf("Group: %v: ShardKVServer: %v ", skv.gid, skv.me)
+		log.Printf(prefix+format, a...)
+	}
+	return
+}
+
+func (skv *ShardKV) snapshotDPrintf(leaderId int, format string, a ...interface{}) (n int, err error) {
+	// if SnapshotDebug && (leaderId == skv.me || FollowerDebug) {
+	if SnapshotDebug && (leaderId == skv.me || FollowerDebug) {
 		prefix := fmt.Sprintf("Group: %v: ShardKVServer: %v ", skv.gid, skv.me)
 		log.Printf(prefix+format, a...)
 	}

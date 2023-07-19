@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	"6.5840/labgob"
+	"6.5840/shardController"
 )
 
 /*
@@ -346,9 +347,6 @@ func (skv *ShardKV) processSnapshot(snapshotIndex int, snapshotTerm int, snapsho
 	skv.decodeSnapshot(snapshot)
 	skv.latestAppliedIndex = snapshotIndex
 	skv.latestAppliedTerm = snapshotTerm
-	/*
-		start threads to send requests in shadowShardGroups
-	*/
 }
 
 /*
@@ -362,6 +360,7 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 
 	// shard -> key: value store
 	var (
+		config                shardController.Config
 		serveShardIDs         map[int]bool
 		serveShards           map[int][]ChunkKVStore
 		receivingShards       map[int][]ChunkKVStore
@@ -379,7 +378,8 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 		transmitNum      int
 	)
 
-	if d.Decode(&serveShardIDs) != nil ||
+	if d.Decode(&config) != nil ||
+		d.Decode(&serveShardIDs) != nil ||
 		d.Decode(&serveShards) != nil ||
 		d.Decode(&receivingShards) != nil ||
 		d.Decode(&futureServeConfigNums) != nil ||
@@ -393,6 +393,7 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 		d.Decode(&transmitNum) != nil {
 		log.Fatalf("Fatal: decoding error!\n")
 	} else {
+		skv.config = config
 		skv.serveShardIDs = serveShardIDs
 		skv.serveShards = serveShards
 		skv.receivingShards = receivingShards
@@ -405,6 +406,33 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 		skv.finishedTransmit = finishedTransmit
 		skv.controllerSeqNum = controllerSeqNum
 		skv.transmitNum = transmitNum
+
+		skv.snapshotDPrintf(skv.leaderId, `
+		decodeSnapshot(): \n
+		skv.serveShardIDs: %v,\n
+		skv.serveShards: %v,\n
+		skv.receivingShards: %v,\n
+		skv.futureServeConfigNums: %v,\n
+		skv.shadowShardGroups: %v,\n
+		skv.serveCachedReplies: %v,\n
+		skv.receivingCachedReplies: %v,\n
+		skv.futureCachedReplies: %v,\n
+		skv.finishedTransmit: %v,\n
+		skv.controllerSeqNum: %v,\n
+		skv.transmitNum: %v,\n
+		`,
+			skv.serveShardIDs,
+			skv.serveShards,
+			skv.receivingShards,
+			skv.futureServeConfigNums,
+			skv.shadowShardGroups,
+			skv.serveCachedReplies,
+			skv.receivingCachedReplies,
+			skv.futureCachedReplies,
+			skv.finishedTransmit,
+			skv.controllerSeqNum,
+			skv.transmitNum,
+		)
 	}
 }
 
@@ -416,7 +444,8 @@ read is allowed
 func (skv *ShardKV) encodeSnapshot() []byte {
 	writer := new(bytes.Buffer)
 	e := labgob.NewEncoder(writer)
-	if e.Encode(skv.serveShardIDs) != nil ||
+	if e.Encode(skv.config) != nil ||
+		e.Encode(skv.serveShardIDs) != nil ||
 		e.Encode(skv.serveShards) != nil ||
 		e.Encode(skv.receivingShards) != nil ||
 		e.Encode(skv.futureServeConfigNums) != nil ||
@@ -430,6 +459,32 @@ func (skv *ShardKV) encodeSnapshot() []byte {
 		e.Encode(skv.transmitNum) != nil {
 		log.Fatalf("encoding error!\n")
 	}
+	skv.snapshotDPrintf(skv.leaderId, `
+	encodeSnapshot(): \n
+	skv.serveShardIDs: %v,\n
+	skv.serveShards: %v,\n
+	skv.receivingShards: %v,\n
+	skv.futureServeConfigNums: %v,\n
+	skv.shadowShardGroups: %v,\n
+	skv.serveCachedReplies: %v,\n
+	skv.receivingCachedReplies: %v,\n
+	skv.futureCachedReplies: %v,\n
+	skv.finishedTransmit: %v,\n
+	skv.controllerSeqNum: %v,\n
+	skv.transmitNum: %v,\n
+	`,
+		skv.serveShardIDs,
+		skv.serveShards,
+		skv.receivingShards,
+		skv.futureServeConfigNums,
+		skv.shadowShardGroups,
+		skv.serveCachedReplies,
+		skv.receivingCachedReplies,
+		skv.futureCachedReplies,
+		skv.finishedTransmit,
+		skv.controllerSeqNum,
+		skv.transmitNum,
+	)
 	data := writer.Bytes()
 	return data
 }

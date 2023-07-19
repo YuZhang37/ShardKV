@@ -108,6 +108,8 @@ type ShardKV struct {
 	applyCh chan raft.ApplyMsg
 	rf      *raft.Raft
 
+	leaderId int
+
 	// global transmit number, per one for each shadow shard, monotonically increasing
 	transmitNum int
 

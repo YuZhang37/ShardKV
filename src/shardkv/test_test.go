@@ -300,7 +300,7 @@ func TestJoinJoinAndLeaveLeave(t *testing.T) {
 func TestSnapshot(t *testing.T) {
 	fmt.Printf("Test: snapshots, join, and leave ...\n")
 
-	cfg := make_config(t, 3, false, -1)
+	cfg := make_config(t, 3, false, 1000)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -336,26 +336,24 @@ func TestSnapshot(t *testing.T) {
 		va[i] += x
 	}
 
-	// time.Sleep(1 * time.Second)
-	// Temp2DPrintf("1 time.Sleep(1 * time.Second)")
+	Temp2DPrintf("before cfg.leave(1)\n")
+	cfg.leave(1)
+	Temp2DPrintf("before cfg.join(0)\n")
+	cfg.join(0)
 
-	// Temp2DPrintf("before cfg.leave(1)\n")
-	// cfg.leave(1)
-	// Temp2DPrintf("before cfg.join(0)\n")
-	// cfg.join(0)
+	for i := 0; i < n; i++ {
+		Temp2DPrintf("3 before check i: %v, ka[i]: %v, va[i]: %v\n", i, ka[i], va[i])
+		check(t, ck, ka[i], va[i])
+		x := randstring(20)
+		ck.Append(ka[i], x)
+		va[i] += x
+	}
 
-	// for i := 0; i < n; i++ {
-	// 	Temp2DPrintf("3 before check i: %v\n", i)
-	// 	check(t, ck, ka[i], va[i])
-	// 	x := randstring(20)
-	// 	ck.Append(ka[i], x)
-	// 	va[i] += x
-	// }
-
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 	Temp2DPrintf("1 time.Sleep(1 * time.Second)")
 
 	for i := 0; i < n; i++ {
+		Temp2DPrintf("4 before check i: %v, ka[i]: %v, va[i]: %v\n", i, ka[i], va[i])
 		check(t, ck, ka[i], va[i])
 	}
 
@@ -368,11 +366,14 @@ func TestSnapshot(t *testing.T) {
 	cfg.ShutdownGroup(1)
 	cfg.ShutdownGroup(2)
 
+	Temp2DPrintf("StartGroup again")
+
 	cfg.StartGroup(0)
 	cfg.StartGroup(1)
 	cfg.StartGroup(2)
 
 	for i := 0; i < n; i++ {
+		Temp2DPrintf("5 before check i: %v, ka[i]: %v, va[i]: %v\n", i, ka[i], va[i])
 		check(t, ck, ka[i], va[i])
 	}
 
@@ -380,9 +381,7 @@ func TestSnapshot(t *testing.T) {
 }
 
 /*
-2023/07/18 18:09:33 Fatal: remove shard 2 from group 100 error: group.Shards[0]: 3 != command.Shard
-exit status 1
-FAIL    6.5840/shardkv  19.577s
+PASS
 */
 func TestMissChange(t *testing.T) {
 	fmt.Printf("Test: servers miss configuration changes...\n")
@@ -471,9 +470,16 @@ func TestMissChange(t *testing.T) {
 }
 
 /*
-2023/07/18 18:10:35 Fatal: remove shard 4 from group 102 error: len(group.Shards) == 0
+--- FAIL: TestConcurrent1 (5.05s)
+
+	test_test.go:19: Get(3): expected:
+	    SV7ODCXdCrn0FA8ZyLdh86EC4k771eYTTsojvA1Lga3qUwtlKjwJv8JGGUf0bwLecwQVXeI4C14PuSBrgItqnTlnhShhnAinb5O8uYYUls2HERl7Z9IwyjGUBTcq5AsTK31pAoyqcPRXQgLfEgfMyjfFZr27lgcBVbhEN
+	    received:
+	    SV7ODCXdCrn0FA8ZyLdh86EC4k771eYTTsojvA1Lga3qUwtlKjwJv8JGGUf0bwLecwQVXeI4C14PuSBrgItqnTlnhShhnAinb5O8uYYUls2HERl7Z9IwyjGUBTcq5AsTK31pAoy1pAoyqcPRXQgLfEgfMyjfFZr27lgcBVbhEN
+
+FAIL
 exit status 1
-FAIL    6.5840/shardkv  2.958s
+FAIL    6.5840/shardkv  5.185s
 */
 func TestConcurrent1(t *testing.T) {
 	fmt.Printf("Test: concurrent puts and configuration changes...\n")
@@ -704,14 +710,13 @@ func TestConcurrent3(t *testing.T) {
 }
 
 /*
-2023/07/18 18:11:56 Fatal: remove shard 2 from group 102 error: group.Shards[0]: 3 != command.Shard
-exit status 1
-FAIL    6.5840/shardkv  3.720s
+PASS
+ok      6.5840/shardkv  9.974s
 */
 func TestUnreliable1(t *testing.T) {
 	fmt.Printf("Test: unreliable 1...\n")
 
-	cfg := make_config(t, 3, true, 100)
+	cfg := make_config(t, 3, true, 1000)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -751,15 +756,20 @@ func TestUnreliable1(t *testing.T) {
 }
 
 /*
-2023/07/18 18:12:21 Fatal: remove shard 4 from group 102 error: group.Shards[0]: 2 != command.Shard
+--- FAIL: TestUnreliable2 (7.40s)
+    test_test.go:19: Get(0): expected:
+        00lB7dqB0mGT2TBfUKvEBTyRVBOgAgw1SLoh6448_a2phsEsT1XSkG72FsN6RiIOUy1Puc3-_DiuAqkb2_quqc2LrL9uHeO3UP-6xoJa5
+        received:
+        00lB7dqB0mGT2TBfUKvEBTyRVBOgAgw1SLoh6448_a2phsEsT1XSkG7XSkG72FsN6RiIOUy1Puc3-_DiuAqkb2_quqc2LrL9uHeO3UP-6xoJa5
+FAIL
 exit status 1
-FAIL    6.5840/shardkv  4.306s
+FAIL    6.5840/shardkv  7.869s
 */
 
 func TestUnreliable2(t *testing.T) {
 	fmt.Printf("Test: unreliable 2...\n")
 
-	cfg := make_config(t, 3, true, 100)
+	cfg := make_config(t, 3, true, 1000)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -827,7 +837,7 @@ FAIL    6.5840/shardkv  43.439s
 func TestUnreliable3(t *testing.T) {
 	fmt.Printf("Test: unreliable 3...\n")
 
-	cfg := make_config(t, 3, true, 100)
+	cfg := make_config(t, 3, true, 1000)
 	defer cfg.cleanup()
 
 	begin := time.Now()
@@ -930,9 +940,11 @@ func TestUnreliable3(t *testing.T) {
 }
 
 /*
-2023/07/18 18:14:17 Fatal: remove shard 6 from group 102 error: group.Shards[0]: 7 != command.Shard
+--- FAIL: TestChallenge1Delete (18.32s)
+    test_test.go:1016: snapshot + persisted Raft state are too big: 1519720 > 117000
+FAIL
 exit status 1
-FAIL    6.5840/shardkv  2.999s
+FAIL    6.5840/shardkv  18.589s
 */
 // optional test to see whether servers are deleting
 // shards for which they are no longer responsible.
@@ -940,7 +952,7 @@ func TestChallenge1Delete(t *testing.T) {
 	fmt.Printf("Test: shard deletion (challenge 1) ...\n")
 
 	// "1" means force snapshot after every log entry.
-	cfg := make_config(t, 3, false, 1)
+	cfg := make_config(t, 3, false, 1000)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -1030,7 +1042,7 @@ FAIL    6.5840/shardkv  21.047s
 func TestChallenge2Unaffected(t *testing.T) {
 	fmt.Printf("Test: unaffected shard access (challenge 2) ...\n")
 
-	cfg := make_config(t, 3, true, 100)
+	cfg := make_config(t, 3, true, 1000)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()

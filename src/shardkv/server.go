@@ -47,6 +47,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 
 	skv := new(ShardKV)
 	skv.me = me
+	skv.leaderId = -1
 	if maxRaftState != -1 {
 		maxRaftState = 8 * maxRaftState
 	}
@@ -506,6 +507,7 @@ func (skv *ShardKV) configChecker() {
 		// no need to lock,
 		// seqNum is incremented when applying, the controller should not cache the query
 		skv.mu.Lock()
+		skv.leaderId = skv.me
 		controllerSeqNum := skv.controllerSeqNum
 		skv.mu.Unlock()
 		newConfig := skv.controllerClerk.QueryWithSeqNum(-1, controllerSeqNum)
