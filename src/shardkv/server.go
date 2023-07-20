@@ -335,7 +335,8 @@ func (skv *ShardKV) processClientRequest(command ShardKVCommand) {
 		return
 	}
 
-	if skv.checkCachedClientReplyForProcessing(&command) {
+	if cachedReply := skv.checkCachedClientReplyForProcessing(&command); cachedReply != nil {
+		go skv.sendReply(cachedReply)
 		return
 	}
 
@@ -363,19 +364,22 @@ func (skv *ShardKV) processClientRequest(command ShardKVCommand) {
 	go skv.sendReply(reply)
 }
 
-func (skv *ShardKV) checkCachedClientReplyForProcessing(command *ShardKVCommand) bool {
+func (skv *ShardKV) checkCachedClientReplyForProcessing(command *ShardKVCommand) *RequestReply {
 	chunkedCachedReplies, exists := skv.serveCachedReplies[command.Shard]
 	if !exists {
-		return false
+		return nil
 	}
 	for _, chunk := range chunkedCachedReplies {
 		cachedReply, exists := chunk.CachedReplies[command.ClerkId]
 		if exists {
-			skv.tempDPrintf(" %v the command has cachedReply: %v\n", command, cachedReply)
-			return cachedReply.SeqNum >= command.SeqNum
+			if cachedReply.SeqNum >= command.SeqNum {
+				skv.tempDPrintf(" %v the command has cachedReply: %v\n", command, cachedReply)
+				return &cachedReply
+			}
+			return nil
 		}
 	}
-	return false
+	return nil
 }
 
 func (skv *ShardKV) cacheClientRequestReply(command *ShardKVCommand, reply *RequestReply) {

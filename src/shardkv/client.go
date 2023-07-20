@@ -106,11 +106,29 @@ func (ck *Clerk) Append(key string, value string) {
 	ck.sendRequest(&args)
 }
 
+func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
+	replyChan := make(chan RequestReply)
+	go ck.sendRequestWithChan(args, replyChan)
+	var reply RequestReply
+	quit := false
+	for !quit {
+		select {
+		case reply = <-replyChan:
+			quit = true
+		case <-time.After(1 * time.Second):
+			ck.mu.Lock()
+			TempDPrintf("clerk's request hasn't finished for args: %v", args)
+			ck.mu.Unlock()
+		}
+	}
+	return &reply
+}
+
 /*
 This function sends request to kvServer, and handles retries
 The ConfigNum is not set in the request, since it may need to query the controller and change
 */
-func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
+func (ck *Clerk) sendRequestWithChan(args *RequestArgs, replyChan chan RequestReply) {
 	TempDPrintf("Clerk: %v, sendRequest() is called with %v\n", ck.clerkId, args)
 	for ck.config.Num == 0 {
 		// init config
@@ -123,7 +141,9 @@ func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
 	quit := false
 	for !quit {
 		gid := ck.config.Shards[args.Shard]
+		ck.mu.Lock()
 		args.ConfigNum = ck.config.Num
+		ck.mu.Unlock()
 		var servers []*labrpc.ClientEnd
 		if servernames, ok := ck.config.Groups[gid]; ok {
 			for si := 0; si < len(servernames); si++ {
@@ -144,7 +164,8 @@ func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
 		}
 
 	}
-	return &reply
+	TempDPrintf("Clerk: %v, sendRequest() finished with %v for args: %v\n", ck.clerkId, reply, args)
+	replyChan <- reply
 }
 
 /*

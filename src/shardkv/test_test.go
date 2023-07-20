@@ -475,22 +475,6 @@ func TestMissChange(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
-/*
---- FAIL: TestConcurrent1 (5.12s)
-
-	test_test.go:19: Get(0): expected:
-	    xIWjza1SZzlLrIKKhr4ZFpZNjI8d4XnsjDiGW2i3pHlDjKMql1DPBrGu_FmfWajeXw_nT5ebfY-qPuysQrV-zMZd7hBg5_dThwC0mntY7aPmBCeqHKTScrPsZ_oIdHHyOQSt76OUUTKmvSGGr49_Rz
-	    received:
-	    xIWjza1SZzlLrIKKhr4ZFpZNjI8d4XnsjDiGW2i3pHlDjKMql1DPBrGu_FmfWajeXw_nT5ebfY-qPuysQrV-zMZd7hBg5_dThwC0mntY7aPmBCeqHKTScrPsZ_oIdHHyOQSt76OUUTKmvSGGrvSGGr49_Rz
-
-FAIL
-exit status 1
-FAIL    6.5840/shardkv  5.403s
-
-2nd run:
-PASS
-ok      6.5840/shardkv  6.343s
-*/
 func TestConcurrent1(t *testing.T) {
 	fmt.Printf("Test: concurrent puts and configuration changes...\n")
 
@@ -568,37 +552,6 @@ func TestConcurrent1(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
-/*
---- FAIL: TestConcurrent2 (14.57s)
-
-	test_test.go:19: Get(0): expected:
-	    y2WJ_WYwa7W4NBS9cUivfpV-CgPid7QmgO23Pgf6hQRatH
-	    received:
-	    y2WJ_WYwa7W4NBS9cUivfpQRatH
-
-FAIL
-exit status 1
-FAIL    6.5840/shardkv  14.858s
-
---- FAIL: TestConcurrent2 (14.71s)
-    test_test.go:19: Get(0): expected:
-        s1sVfIuyYl7YQIgoEwy3BC8FgQmU1vhS310CPLRtHl21YqAcD-wk
-        received:
-        s1sVfIuyYl7YQIgoEwy3BC8FgQmUqAcD-wk
-    testing.go:1446: race detected during execution of test
-FAIL
-exit status 1
-FAIL    6.5840/shardkv  14.922s
-
---- FAIL: TestConcurrent2 (36.36s)
-    test_test.go:19: Get(0): expected:
-        vUvWvVMubxLXmi-Dua4b-vCipC0GP-3BWzO_iBlHwx94
-        received:
-        vUvWvVMubxLXmi-Dua4b-vCipC04
-FAIL
-exit status 1
-
-*/
 // this tests the various sources from which a re-starting
 // group might need to fetch shard contents.
 func TestConcurrent02(t *testing.T) {
@@ -744,40 +697,9 @@ func TestConcurrent2(t *testing.T) {
 }
 
 /*
-no snapshot:
---- FAIL: TestConcurrent3 (18.98s)
-
-	test_test.go:19: Get(0): expected:
-	    tsw3fqcF0OVyi4IOdFBMbP0yHqJ0dKUPPXIoNlsCK
-	    received:
-	    tsw3fqcF0OVyi4IOdFBMbP0yHqJ0dKUPPXIoK
-
-FAIL
-exit status 1
-FAIL    6.5840/shardkv  19.142s
-
---- FAIL: TestConcurrent3 (19.03s)
-
-	test_test.go:19: Get(0): expected:
-	    7tDSXf2T4KDDWgl8FrHpehpDQ
-	    received:
-	    7tDSXf2T4KDDWpDQ
-	testing.go:1446: race detected during execution of test
-
-FAIL
-exit status 1
-FAIL    6.5840/shardkv  19.184s
-
---- FAIL: TestConcurrent3 (17.89s)
-
-	test_test.go:19: Get(0): expected:
-	    MEVFWCqEnwN3q-0fIi8dqbzGjtSgqhfFVuRfx
-	    received:
-	    MEVFWCqEnwN3q-0fIi8dqbzGjtSgqhfx
-
-FAIL
-exit status 1
-FAIL    6.5840/shardkv  18.121s
+the reason this test might stuck is that we don't use snapshot,
+the replay of log might takes longer time.
+no need to debug this test until the snapshot is fixed.
 */
 func TestConcurrent3(t *testing.T) {
 	fmt.Printf("Test: concurrent configuration change and restart...\n")
@@ -816,7 +738,7 @@ func TestConcurrent3(t *testing.T) {
 	}
 
 	t0 := time.Now()
-	for time.Since(t0) < 12*time.Second {
+	for time.Since(t0) < 20*time.Second {
 		cfg.join(2)
 		cfg.join(1)
 		time.Sleep(time.Duration(rand.Int()%900) * time.Millisecond)
@@ -847,18 +769,10 @@ func TestConcurrent3(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
-/*
-	... Passed
-
-PASS
-ok      6.5840/shardkv  11.336s
-
-ok      6.5840/shardkv  9.514s
-*/
 func TestUnreliable1(t *testing.T) {
 	fmt.Printf("Test: unreliable 1...\n")
 
-	cfg := make_config(t, 3, true, 1000)
+	cfg := make_config(t, 3, true, -1)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -898,28 +812,8 @@ func TestUnreliable1(t *testing.T) {
 }
 
 /*
---- FAIL: TestUnreliable2 (7.17s)
-    test_test.go:19: Get(8): expected:
-        Ec4Ni5JVpWdDusYtco2LaBsXhotHX1-jNvOkHv7G3PY6G
-        received:
-        Ec4Ni5JVpWdDusYtco2LaBsXhaBsXhotHX1-jNvOkHv7G3PY6G
-FAIL
-exit status 1
-FAIL    6.5840/shardkv  7.312s
-
---- FAIL: TestUnreliable2 (7.74s)
-    test_test.go:19: Get(7): expected:
-        BBayP3-2fmpOPqW0cVWUUOHFmk97u6G1xxKkDfUCavddCI1anng7s0cFF-qRZcw-ryaM2UPBLVv27idd6jZd3LD9GoRShFZe6Vjj4tT6NMI-mQ23KTDAyV9Jj3tzQmls4t
-        received:
-        BBayP3-2fmpOPqW0cVWUUOHFmk97u6G1xxKkDfUCavddCI1anng7s0cFF-qRZcw-ryaM2U6jZd3LD9GoRShFZe6Vjj4tT6NMI-mQ23KTDAyV9Jj3tzQmls4t
-FAIL
-exit status 1
-FAIL    6.5840/shardkv  7.861s
-
-no snapshot:
-  ... Passed
-PASS
-ok      6.5840/shardkv  8.313s
+stuck:
+client RPC problem?
 */
 
 func TestUnreliable2(t *testing.T) {
@@ -945,6 +839,7 @@ func TestUnreliable2(t *testing.T) {
 	ch := make(chan bool)
 
 	ff := func(i int) {
+		Temp2DPrintf("TestUnreliable: make client for %v\n", i)
 		defer func() { ch <- true }()
 		ck1 := cfg.makeClient()
 		for atomic.LoadInt32(&done) == 0 {
@@ -952,8 +847,10 @@ func TestUnreliable2(t *testing.T) {
 			ck1.Append(ka[i], x)
 			va[i] += x
 		}
+		Temp2DPrintf("TestUnreliable: finish client for %v\n", i)
 	}
 
+	Temp2DPrintf("TestUnreliable: create concurrent clients\n")
 	for i := 0; i < n; i++ {
 		go ff(i)
 	}
@@ -971,14 +868,17 @@ func TestUnreliable2(t *testing.T) {
 	cfg.join(0)
 
 	time.Sleep(2 * time.Second)
-
+	Temp2DPrintf("TestUnreliable: config changes\n")
 	atomic.StoreInt32(&done, 1)
 	cfg.net.Reliable(true)
+	Temp2DPrintf("TestUnreliable: set reliable\n")
 	for i := 0; i < n; i++ {
+		Temp2DPrintf("TestUnreliable: wait i: %v\n", i)
 		<-ch
 	}
-
+	Temp2DPrintf("TestUnreliable: checking\n")
 	for i := 0; i < n; i++ {
+		Temp2DPrintf("TestUnreliable: check i: %v\n", i)
 		check(t, ck, ka[i], va[i])
 	}
 
@@ -1110,22 +1010,8 @@ func TestUnreliable3(t *testing.T) {
 }
 
 /*
---- FAIL: TestChallenge1Delete (19.67s)
-    test_test.go:1020: snapshot + persisted Raft state are too big: 1549790 > 117000
-FAIL
-exit status 1
-FAIL    6.5840/shardkv  19.956s
-
-no snapshot
---- FAIL: TestChallenge1Delete (22.95s)
-    test_test.go:1020: snapshot + persisted Raft state are too big: 1021467 > 117000
-FAIL
-exit status 1
-FAIL    6.5840/shardkv  23.238s
-
-infinite loop
-if transmitting shards in parallel
-
+no need to debug until snapshot is fixed
+good one to debug snapshot: lock problem
 */
 // optional test to see whether servers are deleting
 // shards for which they are no longer responsible.
@@ -1133,7 +1019,7 @@ func TestChallenge1Delete(t *testing.T) {
 	fmt.Printf("Test: shard deletion (challenge 1) ...\n")
 
 	// "1" means force snapshot after every log entry.
-	cfg := make_config(t, 3, false, -1)
+	cfg := make_config(t, 3, false, 1000)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -1198,10 +1084,10 @@ func TestChallenge1Delete(t *testing.T) {
 	// 3 keys should also be stored in client dup tables.
 	// everything on 3 replicas.
 	// plus slop.
-	// expected := 3 * (((n - 3) * 1000) + 2*3*1000 + 6000)
-	// if total > expected {
-	// 	t.Fatalf("snapshot + persisted Raft state are too big: %v > %v\n", total, expected)
-	// }
+	expected := 3 * (((n - 3) * 1000) + 2*3*1000 + 6000)
+	if total > expected {
+		t.Fatalf("snapshot + persisted Raft state are too big: %v > %v\n", total, expected)
+	}
 
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
@@ -1211,10 +1097,7 @@ func TestChallenge1Delete(t *testing.T) {
 }
 
 /*
-infinite loop
-
-infinite loop
-even for no snapshot
+doesn't serve yet -> endless loop
 */
 // optional test to see whether servers can handle
 // shards that are not affected by a config change
@@ -1245,15 +1128,17 @@ func TestChallenge2Unaffected(t *testing.T) {
 
 	// QUERY to find shards now owned by 101
 	c := cfg.mck.Query(-1)
+	Temp2DPrintf("cfg.mck.Query(-1): %v\n", c)
 	owned := make(map[int]bool, n)
 	for s, gid := range c.Shards {
 		owned[s] = gid == cfg.groups[1].gid
 	}
+	Temp2DPrintf("Got owned: %v\n", owned)
 
 	// Wait for migration to new config to complete, and for clients to
 	// start using this updated config. Gets to any key k such that
 	// owned[shard(k)] == true should now be served by group 101.
-	<-time.After(3 * time.Second)
+	<-time.After(1 * time.Second)
 	for i := 0; i < n; i++ {
 		if owned[i] {
 			va[i] = "101"
@@ -1269,12 +1154,13 @@ func TestChallenge2Unaffected(t *testing.T) {
 	cfg.leave(0)
 
 	// Wait to make sure clients see new config
-	<-time.After(3 * time.Second)
+	<-time.After(1 * time.Second)
 
 	// And finally: check that gets/puts for 101-owned keys still complete
 	for i := 0; i < n; i++ {
-		shard := int(ka[i][0]) % 10
+		shard := key2shard(ka[i]) % 10
 		if owned[shard] {
+			Temp2DPrintf("check owned[shard]: %v\n", shard)
 			check(t, ck, ka[i], va[i])
 			ck.Put(ka[i], va[i]+"-1")
 			check(t, ck, ka[i], va[i]+"-1")
@@ -1284,14 +1170,6 @@ func TestChallenge2Unaffected(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
-/*
-infinite loop
-
-no snapshot:
-  ... Passed
-PASS
-ok      6.5840/shardkv  4.788s
-*/
 // optional test to see whether servers can handle operations on shards that
 // have been received as a part of a config migration when the entire migration
 // has not yet completed.

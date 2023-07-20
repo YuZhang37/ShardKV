@@ -49,6 +49,7 @@ const (
 )
 
 type Clerk struct {
+	mu       sync.Mutex
 	clerkId  int64
 	seqNum   int64
 	sc       *shardController.Clerk
