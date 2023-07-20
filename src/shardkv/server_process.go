@@ -109,6 +109,11 @@ func (skv *ShardKV) processTransmitShard(command TransmitShardCommand) {
 	skv.moveShardDPrintf("processTransmitShard() receives TransmitShardCommand: %v\n", command)
 	skv.shardLocks[command.Shard].Lock()
 	defer skv.shardLocks[command.Shard].Unlock()
+	if skv.checkDupTransmitForProcessing(&command) {
+		skv.moveShardDPrintf("processTransmitShard() detects dup for command: %v\n", command)
+		return
+	}
+	skv.moveShardDPrintf("processTransmitShard() receives valid TransmitShardCommand: %v\n", command)
 	if command.IsKVData {
 		var shardKVStore []ChunkKVStore
 		var exists bool
@@ -134,13 +139,32 @@ func (skv *ShardKV) processTransmitShard(command TransmitShardCommand) {
 		TransmitNum: command.TransmitNum,
 		ChunkNum:    command.ChunkNum,
 	}
-	skv.moveShardDPrintf("processTransmitShard() updates: \n skv.receivingShards(size %v): %v,\n skv.receivingCachedReplies (size %v): %v,\n skv.finishedTransmit (size %v): %v\n", len(skv.receivingShards), skv.receivingShards, len(skv.receivingCachedReplies), skv.receivingCachedReplies, len(skv.finishedTransmit), skv.finishedTransmit)
+	skv.moveShardDPrintf("processTransmitShard() updates: \n skv.receivingShards(size %v): %v,\n skv.receivingCachedReplies (size %v): %v,\n skv.finishedTransmit (size %v): %v\n",
+		len(skv.receivingShards), skv.receivingShards, len(skv.receivingCachedReplies), skv.receivingCachedReplies, len(skv.finishedTransmit), skv.finishedTransmit)
 	// the transmit request handler can poll finishedTransmit to find out if the command has been applied or not
 
 	if command.IsLastChunk {
+		skv.printState("Before forwarding: \n")
 		skv.forwardReceivingChunks(command.ConfigNum, command.Shard)
+		skv.printState("After forwarding: \n")
 	}
 	skv.moveShardDPrintf("processTransmitShard() finishes TransmitShardCommand: %v\n", command)
+}
+
+func (skv *ShardKV) checkDupTransmitForProcessing(command *TransmitShardCommand) bool {
+	transmit, exists := skv.finishedTransmit[command.FromGID]
+	skv.moveShardDPrintf("checkDupTransmitForProcessing for command: %v, cached transmit: %v, exists: %v\n", command, transmit, exists)
+	if !exists {
+		return false
+	}
+	if transmit.TransmitNum > command.TransmitNum {
+		return true
+	}
+	if transmit.TransmitNum < command.TransmitNum {
+		return false
+	}
+	// transmit.TransmitNum == args.TransmitNum
+	return transmit.ChunkNum >= command.ChunkNum
 }
 
 func (skv *ShardKV) copyShardKVStoreChunk(chunk *ChunkKVStore) ChunkKVStore {
@@ -157,7 +181,7 @@ func (skv *ShardKV) copyShardKVStoreChunk(chunk *ChunkKVStore) ChunkKVStore {
 func (skv *ShardKV) copyShardCachedReplyChunk(chunk *ChunkedCachedReply) ChunkedCachedReply {
 	newChunk := ChunkedCachedReply{
 		Size:          chunk.Size,
-		CachedReplies: map[int64]RequestReply{},
+		CachedReplies: make(map[int64]RequestReply),
 	}
 	for key, value := range chunk.CachedReplies {
 		newChunk.CachedReplies[key] = value
@@ -191,6 +215,8 @@ func (skv *ShardKV) forwardReceivingChunks(configNum int, shard int) {
 			skv.moveShardToShadow(shard, skv.receivingShards, skv.receivingCachedReplies)
 		}
 	}
+	delete(skv.receivingShards, shard)
+	delete(skv.receivingCachedReplies, shard)
 	skv.moveShardDPrintf("forwardReceivingChunks() finishes configNum: %v, shard: %v\n", configNum, shard)
 }
 

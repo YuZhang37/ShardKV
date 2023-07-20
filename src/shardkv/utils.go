@@ -5,14 +5,41 @@ import (
 	"log"
 )
 
-const TempDebug = false
-const MoveShardDebug = false
-const TransmitSenderDebug = false
-const TransmitHandlerDebug = false
-const SnapshotDebug = false
+const TempDebug = true
+const MoveShardDebug = true
+const TransmitSenderDebug = true
+const TransmitHandlerDebug = true
+const SnapshotDebug = true
 const FollowerDebug = false
-const Temp2Debug = false
+const Temp2Debug = true
 
+func (skv *ShardKV) printState(msg string) {
+	skv.tempDPrintf(msg+`
+	skv.serveShardIDs: %v,\n
+	skv.serveShards: %v,\n
+	skv.receivingShards: %v,\n
+	skv.futureServeConfigNums: %v,\n
+	skv.shadowShardGroups: %v,\n
+	skv.serveCachedReplies: %v,\n
+	skv.receivingCachedReplies: %v,\n
+	skv.futureCachedReplies: %v,\n
+	skv.finishedTransmit: %v,\n
+	skv.config: %v,\n
+	skv.transmitNum: %v,\n
+	`,
+		skv.serveShardIDs,
+		skv.serveShards,
+		skv.receivingShards,
+		skv.futureServeConfigNums,
+		skv.shadowShardGroups,
+		skv.serveCachedReplies,
+		skv.receivingCachedReplies,
+		skv.futureCachedReplies,
+		skv.finishedTransmit,
+		skv.config,
+		skv.transmitNum,
+	)
+}
 func (skv *ShardKV) tempDPrintf(format string, a ...interface{}) (n int, err error) {
 	_, votedFor, _ := skv.rf.GetLeaderId()
 	if TempDebug && (votedFor == skv.me || FollowerDebug) {

@@ -168,6 +168,7 @@ func (ck *Clerk) sendToServers(args *RequestArgs, servers []*labrpc.ClientEnd) R
 			// contact wrong group or
 			// the raft server commits and kvServer applies
 			reply = tempReply
+			break
 		} else if tempReply.WaitForUpdate {
 			// the server is a leader server, but the server hasn't updated the config to args.ConfigNum yet
 			time.Sleep(time.Duration(CHECKCONFIGTIMEOUT) * time.Millisecond)

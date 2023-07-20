@@ -335,6 +335,12 @@ func (skv *ShardKV) processClientRequest(command ShardKVCommand) {
 		return
 	}
 
+	if skv.checkCachedClientReplyForProcessing(&command) {
+		return
+	}
+
+	skv.moveShardDPrintf("processClientRequest() receives valid ShardKVCommand: %v\n", command)
+
 	skv.shardLocks[command.Shard].Lock()
 	defer skv.shardLocks[command.Shard].Unlock()
 
@@ -355,6 +361,21 @@ func (skv *ShardKV) processClientRequest(command ShardKVCommand) {
 	skv.cacheClientRequestReply(&command, reply)
 	skv.tempDPrintf("ShardKV: %v, processClientRequest() finishes with reply: %v\n", skv.me, reply)
 	go skv.sendReply(reply)
+}
+
+func (skv *ShardKV) checkCachedClientReplyForProcessing(command *ShardKVCommand) bool {
+	chunkedCachedReplies, exists := skv.serveCachedReplies[command.Shard]
+	if !exists {
+		return false
+	}
+	for _, chunk := range chunkedCachedReplies {
+		cachedReply, exists := chunk.CachedReplies[command.ClerkId]
+		if exists {
+			skv.tempDPrintf(" %v the command has cachedReply: %v\n", command, cachedReply)
+			return cachedReply.SeqNum >= command.SeqNum
+		}
+	}
+	return false
 }
 
 func (skv *ShardKV) cacheClientRequestReply(command *ShardKVCommand, reply *RequestReply) {
@@ -401,6 +422,7 @@ func (skv *ShardKV) checkServing(command *ShardKVCommand) bool {
 			reply = skv.getFakeReply(command)
 			reply.WrongGroup = true
 		}
+		skv.tempDPrintf(" case 1 doesn't serve command: %v,\n skv.config: %v, \n fakeReply: %v\n", command, skv.config, reply)
 		go skv.sendReply(reply)
 		return false
 	}
@@ -413,8 +435,11 @@ func (skv *ShardKV) checkServing(command *ShardKVCommand) bool {
 		reply.ErrorMsg = "current config serves command.Shard, but serveMap may have not received the shard yet"
 		skv.tempDPrintf("WaitForUpdate: skv.config: %v, skv.serveShardIDs: %v, ", skv.config, skv.serveShardIDs)
 		go skv.sendReply(reply)
+		skv.tempDPrintf(" case 2 doesn't serve command: %v,\n skv.config: %v, \n fakeReply: %v\n", command, skv.config, reply)
+		go skv.sendReply(reply)
 		return false
 	}
+	skv.tempDPrintf(" serves command: %v,\n skv.config: %v\n", command, skv.config)
 	return true
 }
 
@@ -499,7 +524,7 @@ func (skv *ShardKV) configChecker() {
 	skv.tempDPrintf("configChecker is running...")
 	for !skv.killed() {
 		time.Sleep(time.Duration(CHECKCONFIGTIMEOUT) * time.Millisecond)
-		skv.tempDPrintf("configChecker sends query...\n")
+		// skv.tempDPrintf("configChecker sends query...\n")
 		isValidLeader := skv.rf.IsValidLeader()
 		if !isValidLeader {
 			continue
@@ -512,9 +537,9 @@ func (skv *ShardKV) configChecker() {
 		skv.mu.Unlock()
 		newConfig := skv.controllerClerk.QueryWithSeqNum(-1, controllerSeqNum)
 		skv.mu.Lock()
-		skv.tempDPrintf("configChecker queries newConfig: %v, old config: %v\n", newConfig, skv.config)
+		// skv.tempDPrintf("configChecker queries newConfig: %v, old config: %v\n", newConfig, skv.config)
 		if newConfig.Num > skv.config.Num {
-			skv.tempDPrintf("configChecker gets newConfig: %v, old config: %v\n", newConfig, skv.config)
+			// skv.tempDPrintf("configChecker gets newConfig: %v, old config: %v\n", newConfig, skv.config)
 			// issue a command
 			command := ConfigUpdateCommand{
 				Operation: UPDATECONFIG,
@@ -541,10 +566,6 @@ func (skv *ShardKV) shadowShardInspector() {
 	quit := false
 	for !quit {
 		time.Sleep(time.Duration(INSPECTSHADOWTIMEOUT) * time.Millisecond)
-		isValidLeader := skv.rf.IsValidLeader()
-		if !isValidLeader {
-			continue
-		}
 		skv.mu.Lock()
 		for index := range skv.shadowShardGroups {
 			if !skv.shadowShardGroups[index].Processing {

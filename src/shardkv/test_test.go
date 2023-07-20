@@ -1,15 +1,18 @@
 package shardkv
 
-import "6.5840/porcupine"
-import "6.5840/models"
-import "testing"
-import "strconv"
-import "time"
-import "fmt"
-import "sync/atomic"
-import "sync"
-import "math/rand"
-import "io/ioutil"
+import (
+	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"6.5840/models"
+	"6.5840/porcupine"
+)
 
 const linearizabilityCheckTimeout = 1 * time.Second
 
@@ -626,7 +629,7 @@ func TestConcurrent02(t *testing.T) {
 		ck1 := cfg.makeClient()
 		defer func() { ch <- true }()
 		for atomic.LoadInt32(&done) == 0 {
-			x := randstring(1)
+			x := "-" + randstring(10)
 			ck1.Append(ka[i], x)
 			va[i] += x
 			time.Sleep(10 * time.Millisecond)
@@ -662,6 +665,7 @@ func TestConcurrent02(t *testing.T) {
 	}
 
 	for i := 0; i < n; i++ {
+		Temp2DPrintf("1 check i: %v, ka[i]: %v, va[i]: %v\n", i, ka[i], va[i])
 		check(t, ck, ka[i], va[i])
 	}
 
