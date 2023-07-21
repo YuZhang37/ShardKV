@@ -7,8 +7,9 @@ import (
 
 // RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+
+	rf.lockMu("RequestVote() with args: %v\n", args)
+	defer rf.unlockMu()
 	reply.Server = rf.me
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
@@ -81,14 +82,15 @@ func (rf *Raft) ticker() {
 		randomTime := rand.Intn(rf.randomRange)
 		time.Sleep(time.Duration((randomTime + rf.eleTimeOut)) *
 			time.Millisecond)
-		rf.mu.Lock()
+
+		rf.lockMu("ticker()")
 		if rf.role == LEADER {
-			rf.mu.Unlock()
+			rf.unlockMu()
 			continue
 		}
 		if rf.msgReceived {
 			rf.msgReceived = false
-			rf.mu.Unlock()
+			rf.unlockMu()
 			continue
 		}
 		// follower or candidate, not receiving msg
@@ -97,7 +99,7 @@ func (rf *Raft) ticker() {
 
 		ElectionDPrintf("%v timeout: %v at term %v\n", rf.me, randomTime+rf.eleTimeOut, rf.currentTerm)
 		ElectionDPrintf("\n%v will start election at term %v\n", rf.me, rf.currentTerm+1)
-		rf.mu.Unlock()
+		rf.unlockMu()
 	}
 }
 
@@ -128,22 +130,22 @@ ELection function is long, may need to refactor to small pieces
 
 func (rf *Raft) Election() {
 
-	rf.mu.Lock()
+	rf.lockMu("1 Election()")
 	/*
 		between detecting msgReceived false and Election(), there can be other candidates request to vote, and the server votes for that candidate, updating currentTerm and votedFor
 	*/
 	if rf.msgReceived {
-		rf.mu.Unlock()
+		rf.unlockMu()
 		return
 	}
 	rf.upgradeToCandidate()
 	rf.persistState("server %v leader election", rf.me)
 	// not necessary to persist here, if the server crashes, it can start over the election with previous term just like crash before starting election
-	rf.mu.Unlock()
+	rf.unlockMu()
 
 	countVotes, reply := rf.sendAndReceiveVotes()
 
-	rf.mu.Lock()
+	rf.lockMu("2 Election()")
 	/*
 		if role is not candidate, it means some higher term candidate
 		has requested vote from this server, and the server grants the vote
@@ -159,7 +161,7 @@ func (rf *Raft) Election() {
 		ElectionDPrintf("%v failed the election at term %v\n", rf.me, rf.currentTerm)
 	}
 
-	rf.mu.Unlock()
+	rf.unlockMu()
 }
 
 func (rf *Raft) upgradeToCandidate() {
@@ -230,10 +232,11 @@ func (rf *Raft) getRequestVoteArgs() RequestVoteArgs {
 
 // return granted vote count and last reply
 func (rf *Raft) sendAndReceiveVotes() (int, RequestVoteReply) {
-	rf.mu.Lock()
+
+	rf.lockMu("sendAndReceiveVotes()")
 	args := rf.getRequestVoteArgs()
 	numOfPeers := len(rf.peers)
-	rf.mu.Unlock()
+	rf.unlockMu()
 	// receive vote replies from all sending goroutines
 	ch := make(chan RequestVoteReply)
 	for i := 0; i < numOfPeers; i++ {

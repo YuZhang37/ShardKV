@@ -3,6 +3,7 @@ package shardkv
 import (
 	"fmt"
 	"log"
+	"time"
 )
 
 const TempDebug = true
@@ -12,6 +13,44 @@ const TransmitHandlerDebug = true
 const SnapshotDebug = true
 const FollowerDebug = false
 const Temp2Debug = true
+
+const WatchLock = true
+
+func (skv *ShardKV) lockMu(format string, a ...interface{}) {
+	skv.mu.Lock()
+	if WatchLock {
+		skv.lockChan = make(chan int)
+		go skv.testLock(format, a...)
+	}
+}
+
+func (skv *ShardKV) unlockMu() {
+	if WatchLock {
+		skv.lockChan <- 1
+	}
+	skv.mu.Unlock()
+}
+
+func (skv *ShardKV) testLock(format string, a ...interface{}) {
+	quit := false
+	for !quit {
+		select {
+		case <-skv.lockChan:
+			quit = true
+		case <-time.After(5 * time.Second):
+			skv.snapshot2DPrintf("ShardKV testLock(): "+format+"is not unlocked", a...)
+		}
+	}
+}
+
+func (skv *ShardKV) snapshot2DPrintf(format string, a ...interface{}) (n int, err error) {
+	// if SnapshotDebug && (leaderId == skv.me || FollowerDebug) {
+	if SnapshotDebug {
+		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
+		log.Printf(prefix+format, a...)
+	}
+	return
+}
 
 func (skv *ShardKV) printState(msg string) {
 	skv.tempDPrintf(msg+`
@@ -41,36 +80,43 @@ func (skv *ShardKV) printState(msg string) {
 	)
 }
 func (skv *ShardKV) tempDPrintf(format string, a ...interface{}) (n int, err error) {
-	_, votedFor, _ := skv.rf.GetLeaderId()
-	if TempDebug && (votedFor == skv.me || FollowerDebug) {
-		prefix := fmt.Sprintf("Group: %v: ShardKVServer: %v ", skv.gid, skv.me)
+	if TempDebug {
+		log.Printf("Group: %v, ShardKVServer: %v, try to get votedFor\n", skv.gid, skv.me)
+		// _, votedFor, _ := skv.rf.GetLeaderId()
+		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
+		// log.Printf("Group: %v, ShardKVServer: %v, got votedFor: %v for msg: %v\n", skv.gid, skv.me, votedFor, prefix)
+		// if votedFor == skv.me || FollowerDebug {
 		log.Printf(prefix+format, a...)
+		// }
 	}
 	return
 }
 
 func (skv *ShardKV) transmitSenderDPrintf(format string, a ...interface{}) (n int, err error) {
-	_, votedFor, _ := skv.rf.GetLeaderId()
-	if TransmitSenderDebug && (votedFor == skv.me || FollowerDebug) {
-		prefix := fmt.Sprintf("Group: %v: ShardKVServer: %v ", skv.gid, skv.me)
+	// _, votedFor, _ := skv.rf.GetLeaderId()
+	// if TransmitSenderDebug && (votedFor == skv.me || FollowerDebug) {
+	if TransmitSenderDebug {
+		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
 		log.Printf(prefix+format, a...)
 	}
 	return
 }
 
 func (skv *ShardKV) transmitHandlerDPrintf(format string, a ...interface{}) (n int, err error) {
-	_, votedFor, _ := skv.rf.GetLeaderId()
-	if TransmitHandlerDebug && (votedFor == skv.me || FollowerDebug) {
-		prefix := fmt.Sprintf("Group: %v: ShardKVServer: %v ", skv.gid, skv.me)
+	// _, votedFor, _ := skv.rf.GetLeaderId()
+	// if TransmitHandlerDebug && (votedFor == skv.me || FollowerDebug) {
+	if TransmitHandlerDebug {
+		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
 		log.Printf(prefix+format, a...)
 	}
 	return
 }
 
 func (skv *ShardKV) moveShardDPrintf(format string, a ...interface{}) (n int, err error) {
-	_, votedFor, _ := skv.rf.GetLeaderId()
-	if MoveShardDebug && (votedFor == skv.me || FollowerDebug) {
-		prefix := fmt.Sprintf("Group: %v: ShardKVServer: %v ", skv.gid, skv.me)
+	// _, votedFor, _ := skv.rf.GetLeaderId()
+	// if MoveShardDebug && (votedFor == skv.me || FollowerDebug) {
+	if MoveShardDebug {
+		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
 		log.Printf(prefix+format, a...)
 	}
 	return
@@ -79,7 +125,7 @@ func (skv *ShardKV) moveShardDPrintf(format string, a ...interface{}) (n int, er
 func (skv *ShardKV) snapshotDPrintf(leaderId int, format string, a ...interface{}) (n int, err error) {
 	// if SnapshotDebug && (leaderId == skv.me || FollowerDebug) {
 	if SnapshotDebug {
-		prefix := fmt.Sprintf("Group: %v: ShardKVServer: %v ", skv.gid, skv.me)
+		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
 		log.Printf(prefix+format, a...)
 	}
 	return
@@ -98,33 +144,3 @@ func Temp2DPrintf(format string, a ...interface{}) (n int, err error) {
 	}
 	return
 }
-
-// func (sc *ShardController) tempDPrintf(format string, a ...interface{}) (n int, err error) {
-// 	_, votedFor, _ := sc.rf.GetLeaderId()
-// 	if TempDebug && (votedFor == sc.me || FollowerDebug) {
-// 		// if TempDebug {
-// 		prefix := fmt.Sprintf("ShardController: %v ", sc.me)
-// 		log.Printf(prefix+format, a...)
-// 	}
-// 	return
-// }
-
-// func (sc *ShardController) processPrintf(start bool, operation string, command ControllerCommand, reply ControllerReply) (n int, err error) {
-// 	_, votedFor, _ := sc.rf.GetLeaderId()
-// 	if TempDebug && (votedFor == sc.me || FollowerDebug) {
-// 		// if TempDebug {
-// 		if start {
-// 			format := fmt.Sprintf("ShardServer: %v, is processing operation: %v, got command %v\n", sc.me, operation, command)
-// 			log.Printf(format)
-// 		} else {
-// 			format := fmt.Sprintf("ShardServer: %v, finishes processing operation: %v for %v, got reply %v\n", sc.me, operation, command, reply)
-// 			log.Printf(format)
-// 		}
-// 		log.Printf("ShardServer: %v, current state: \n", sc.me)
-// 		for index, config := range sc.configs {
-// 			log.Printf("\nShardServer: %v, index: %v, config.Num: %v, \nconfig.operation: %v, \nconfig.Shards (size %v): %v, \nconfig.Groups (size %v): %v, \nconfig.ServerNames (size %v): %v, \nconfig.GroupInfos (size %v): %v\n", sc.me, index, config.Num, config.Operation, len(config.Shards), config.Shards, len(config.Groups), config.Groups, len(config.ServerNames), config.ServerNames, len(config.GroupInfos), config.GroupInfos)
-// 		}
-
-// 	}
-// 	return
-// }

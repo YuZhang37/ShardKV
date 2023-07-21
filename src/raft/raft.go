@@ -24,6 +24,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	labgob.Register(Noop{})
 	// no lock is need at initialization
 	rf := &Raft{}
+	rf.lockChan = nil
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
@@ -103,8 +104,9 @@ if log exceeds maxLogSize and can't reduce size by snapshot()
 return -1, -1, true. In this case, start won't return immediately
 */
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+
+	rf.lockMu("Start() with command: %v\n", command)
+	defer rf.unlockMu()
 	index := -1
 	term := -1
 	isLeader := false
@@ -136,14 +138,18 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	newLog := append(rf.log, entry)
 	size := rf.getLogSize(newLog)
-	for rf.maxLogSize != -1 && size >= rf.maxLogSize {
+	if rf.maxLogSize != -1 && size >= rf.maxLogSize {
 		// snapshot enabled
 		rf.logRaftState("from leader: before signalSnapshot")
 		rf.logRaftState2(size)
 		if rf.commitIndex > rf.snapshotLastIndex {
 			// there are log entries to compact
+			rf.snapshotDPrintf("Start() calls insideApplyCommand...")
 			rf.insideApplyCommand(rf.commitIndex, true)
+			rf.snapshotDPrintf("Start() finishes insideApplyCommand...")
+			rf.snapshotDPrintf("Start() calls signalSnapshot...")
 			rf.signalSnapshot()
+			rf.snapshotDPrintf("Start() finishes signalSnapshot...")
 			rf.persistState("server %v Start() snapshots for entry %v", rf.me, entry)
 			rf.logRaftState("from leader: after signalSnapshot")
 			newLog = append(rf.log, entry)

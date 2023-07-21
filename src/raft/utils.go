@@ -1,6 +1,10 @@
 package raft
 
-import "log"
+import (
+	"fmt"
+	"log"
+	"time"
+)
 
 // Debugging
 // const Debug = false
@@ -45,6 +49,36 @@ const DebugKVStore = false
 const DebugCommitNoop = false
 const DebugShardController = false
 const DebugShardKV = true
+const DebugSnapshotLock = true
+
+const WatchLock = true
+
+func (rf *Raft) lockMu(format string, a ...interface{}) {
+	rf.mu.Lock()
+	if WatchLock {
+		rf.lockChan = make(chan int)
+		go rf.testLock(format, a...)
+	}
+}
+
+func (rf *Raft) unlockMu() {
+	if WatchLock {
+		rf.lockChan <- 1
+	}
+	rf.mu.Unlock()
+}
+
+func (rf *Raft) testLock(format string, a ...interface{}) {
+	quit := false
+	for !quit {
+		select {
+		case <-rf.lockChan:
+			quit = true
+		case <-time.After(5 * time.Second):
+			rf.snapshotDPrintf("Raft testLock(): "+format+"is not unlocked", a...)
+		}
+	}
+}
 
 // const colorRed = "\033[0;31m"
 
@@ -150,6 +184,14 @@ func ShardControllerDPrintf(format string, a ...interface{}) (n int, err error) 
 func ShardKVDPrintf(format string, a ...interface{}) (n int, err error) {
 	if DebugShardKV {
 		log.Printf(format, a...)
+	}
+	return
+}
+
+func (rf *Raft) snapshotDPrintf(format string, a ...interface{}) (n int, err error) {
+	if DebugShardKV && rf.votedFor == rf.me {
+		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v ", rf.gid, rf.me)
+		log.Printf(prefix+format, a...)
 	}
 	return
 }

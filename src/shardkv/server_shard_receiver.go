@@ -31,7 +31,7 @@ func (skv *ShardKV) TransmitShardHandler(args *TransmitShardArgs, reply *Transmi
 	if !appended {
 		return
 	}
-	skv.mu.Lock()
+	skv.lockMu("TransmitShardHandler() with args: %v \n", args)
 	// if the command is executed, the command has the latest TransmitNum and ChunkNum
 	skv.onGoingTransmit[command.Shard] = TransmitInfo{
 		FromGID:     command.FromGID,
@@ -39,7 +39,7 @@ func (skv *ShardKV) TransmitShardHandler(args *TransmitShardArgs, reply *Transmi
 		ChunkNum:    command.ChunkNum,
 	}
 
-	skv.mu.Unlock()
+	skv.unlockMu()
 	skv.transmitHandlerDPrintf("TransmitShardHandler() waitCommitted\n")
 	if skv.waitCommitted(args) {
 		reply.Succeeded = true
@@ -67,8 +67,8 @@ func (skv *ShardKV) checkLeaderForTransmit(args *TransmitShardArgs, reply *Trans
 }
 
 func (skv *ShardKV) checkDupTransmit(args *TransmitShardArgs, reply *TransmitShardReply) bool {
-	skv.mu.Lock()
-	defer skv.mu.Unlock()
+	skv.lockMu("checkDupTransmit() with args: %v\n", args)
+	defer skv.unlockMu()
 	skv.transmitHandlerDPrintf("TransmitShardHandler() checkDupTransmit: %v\n", skv.finishedTransmit[args.FromGID])
 	transmit, exists := skv.finishedTransmit[args.FromGID]
 	if !exists {
@@ -92,8 +92,8 @@ func (skv *ShardKV) checkDupTransmit(args *TransmitShardArgs, reply *TransmitSha
 }
 
 func (skv *ShardKV) checkOngoingTransmit(args *TransmitShardArgs, reply *TransmitShardReply) bool {
-	skv.mu.Lock()
-	defer skv.mu.Unlock()
+	skv.lockMu("checkOngoingTransmit() with args: %v\n", args)
+	defer skv.unlockMu()
 	skv.transmitHandlerDPrintf("TransmitShardHandler() checkOngoingTransmit: %v\n", skv.onGoingTransmit[args.FromGID])
 	transmit, exists := skv.onGoingTransmit[args.FromGID]
 	if !exists {
@@ -162,20 +162,20 @@ func (skv *ShardKV) waitCommitted(args *TransmitShardArgs) bool {
 		if skv.killed() || !isValidLeader {
 			break
 		}
-		skv.mu.Lock()
+		skv.lockMu("waitCommitted() with args: %v\n", args)
 		transmit, exists := skv.finishedTransmit[args.FromGID]
 		skv.transmitHandlerDPrintf("waitCommitted() gets transmit for FromGID %v, TransmitNum %v: %v, %v\n", args.FromGID, args.TransmitNum, transmit, exists)
 		if exists {
 			if transmit.TransmitNum > args.TransmitNum {
-				skv.mu.Unlock()
+				skv.unlockMu()
 				return true
 			}
 			if transmit.TransmitNum == args.TransmitNum && transmit.ChunkNum >= args.ChunkNum {
-				skv.mu.Unlock()
+				skv.unlockMu()
 				return true
 			}
 		}
-		skv.mu.Unlock()
+		skv.unlockMu()
 	}
 	return false
 

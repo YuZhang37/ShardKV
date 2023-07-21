@@ -47,7 +47,9 @@ func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
 	}
 	for shard, configNum := range skv.futureServeConfigNums {
 		if configNum <= skv.config.Num {
+			skv.tempDPrintf("processConfigUpdate() processes future shard: %v\n", shard)
 			skv.shardLocks[shard].Lock()
+			skv.tempDPrintf("processConfigUpdate() future shard locks shard %v\n", shard)
 			// the server can process futureShards
 			if skv.config.Shards[shard] == skv.gid {
 				// move shard from future to serve
@@ -63,6 +65,7 @@ func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
 				skv.moveShardToShadow(shard, skv.futureServeShards, skv.futureCachedReplies)
 			}
 			skv.shardLocks[shard].Unlock()
+			skv.tempDPrintf("processConfigUpdate() future shard unlocks shard %v\n", shard)
 		}
 	}
 }
@@ -368,8 +371,8 @@ or at the start of a new leader
 for both cases, skv.clerkChans will be empty
 */
 func (skv *ShardKV) processSnapshot(snapshotIndex int, snapshotTerm int, snapshot []byte) {
-	skv.mu.Lock()
-	defer skv.mu.Unlock()
+	skv.lockMu("processSnapshot() with snapshotIndex: %v, snapshotTerm: %v\n", snapshotIndex, snapshotTerm)
+	defer skv.unlockMu()
 	skv.decodeSnapshot(snapshot)
 	skv.latestAppliedIndex = snapshotIndex
 	skv.latestAppliedTerm = snapshotTerm

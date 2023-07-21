@@ -13,8 +13,9 @@ that index. Raft should now trim its log as much as possible.
 index is always ≤ the commit index on this server.
 */
 func (rf *Raft) Snapshot(lastIncludedIndex int, snapshot []byte) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+
+	rf.lockMu("Snapshot() with lastIncludedIndex: %v\n", lastIncludedIndex)
+	defer rf.unlockMu()
 	Snapshot2DPrintf("server: %v, Snapshot() is called with lastIncludedIndex %v,\n", rf.me, lastIncludedIndex)
 	indexInLiveLog := rf.insideSnapshot(lastIncludedIndex, snapshot)
 	if indexInLiveLog == -1 {
@@ -88,9 +89,10 @@ func (rf *Raft) SendSnapshot(server int, replyChan chan<- SendSnapshotReply) {
 		Installed: false,
 	}
 	for {
-		rf.mu.Lock()
+
+		rf.lockMu("SendSnapshot() with server: %v\n", server)
 		if rf.killed() || rf.role != LEADER {
-			rf.mu.Unlock()
+			rf.unlockMu()
 			break
 		}
 		args := SendSnapshotArgs{
@@ -100,7 +102,7 @@ func (rf *Raft) SendSnapshot(server int, replyChan chan<- SendSnapshotReply) {
 			LastIncludedTerm:  rf.snapshotLastTerm,
 			Snapshot:          rf.snapshot,
 		}
-		rf.mu.Unlock()
+		rf.unlockMu()
 		reply := SendSnapshotReply{}
 		ok := rf.peers[server].Call("Raft.InstallSnapshot", &args, &reply)
 		if ok {
@@ -116,8 +118,9 @@ func (rf *Raft) SendSnapshot(server int, replyChan chan<- SendSnapshotReply) {
 func (rf *Raft) InstallSnapshot(args *SendSnapshotArgs, reply *SendSnapshotReply) {
 	Snapshot2DPrintf("server: %v, InstallSnapshot() is called with args: %v\n", rf.me, *args)
 	KVStoreDPrintf("server: %v, InstallSnapshot() is called with args: %v\n", rf.me, *args)
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+
+	rf.lockMu("InstallSnapshot() with args: %v\n", args)
+	defer rf.unlockMu()
 	reply.Term = rf.currentTerm
 	reply.Server = rf.me
 
@@ -195,8 +198,9 @@ func (rf *Raft) SendAndHarvestSnapshot(server int) {
 	go rf.SendSnapshot(server, replyChan)
 	reply := <-replyChan
 	Snapshot2DPrintf("server: %v, SendAndHarvestSnapshot() %v reply: %v\n", rf.me, server, reply)
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+
+	rf.lockMu("SendAndHarvestSnapshot() with server: %v\n", server)
+	defer rf.unlockMu()
 	if !reply.Installed && reply.Term > rf.currentTerm {
 		rf.onReceiveHigherTerm(reply.Term)
 		rf.persistState("SendAndHarvestSnapshot(): %v", server)
@@ -211,6 +215,7 @@ func (rf *Raft) SendAndHarvestSnapshot(server int) {
 
 func (rf *Raft) signalSnapshot() bool {
 	Snapshot2DPrintf("server: %v, SendSnapshot() is called\n", rf.me)
+	rf.snapshotDPrintf("SendSnapshot() is called\n")
 	killed := false
 	received := false
 	sent := false
@@ -224,6 +229,7 @@ func (rf *Raft) signalSnapshot() bool {
 			}
 		}
 	}
+	rf.snapshotDPrintf("SendSnapshot() sent the signal\n")
 	for !killed && !received {
 		select {
 		case snapshot := <-rf.SnapshotChan:
@@ -235,6 +241,7 @@ func (rf *Raft) signalSnapshot() bool {
 			}
 		}
 	}
+	rf.snapshotDPrintf("SendSnapshot() received the snapshot\n")
 	Snapshot2DPrintf("server: %v, SendSnapshot() is finished: %v\n", rf.me, sent && received)
 	return sent && received
 }

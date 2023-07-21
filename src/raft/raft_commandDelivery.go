@@ -3,7 +3,8 @@ package raft
 // import "log"
 
 func (rf *Raft) ApplySnapshot() {
-	rf.mu.Lock()
+
+	rf.lockMu("ApplySnapshot()")
 	Snapshot2DPrintf("server: %v, ApplySnapshot() is called with lastIncludedIndex: %v, lastIncludedTerm: %v\n", rf.me, rf.snapshotLastIndex, rf.snapshotLastTerm)
 	KVStoreDPrintf("server: %v, ApplySnapshot() is called with lastIncludedIndex: %v, lastIncludedTerm: %v\n", rf.me, rf.snapshotLastIndex, rf.snapshotLastTerm)
 	msg := ApplyMsg{
@@ -12,7 +13,7 @@ func (rf *Raft) ApplySnapshot() {
 		SnapshotTerm:  rf.snapshotLastTerm,
 		SnapshotIndex: rf.snapshotLastIndex,
 	}
-	rf.mu.Unlock()
+	rf.unlockMu()
 
 	rf.appliedLock.Lock()
 	defer rf.appliedLock.Unlock()
@@ -52,13 +53,14 @@ func (rf *Raft) insideApplyCommand(issuedIndex int, locked bool) {
 	for ; nextAppliedIndex <= issuedIndex; nextAppliedIndex++ {
 		// prepare msg
 		if !locked {
-			rf.mu.Lock()
+			rf.lockMu("insideApplyCommand() with issuedIndex: %v, locked: %v\n", issuedIndex, locked)
+
 		}
 		indexInLiveLog := rf.findEntryWithIndexInLog(nextAppliedIndex, rf.log, rf.snapshotLastIndex)
 		if indexInLiveLog < 0 {
 			// this entry has been merged, but not applied: error
 			if !locked {
-				rf.mu.Unlock()
+				rf.unlockMu()
 			}
 			continue
 		}
@@ -69,7 +71,7 @@ func (rf *Raft) insideApplyCommand(issuedIndex int, locked bool) {
 			CommandTerm:  rf.log[indexInLiveLog].Term,
 		}
 		if !locked {
-			rf.mu.Unlock()
+			rf.unlockMu()
 		}
 		rf.appliedLock.Lock()
 		if _, exists := rf.pendingMsg[msg.CommandIndex]; !exists {

@@ -129,7 +129,7 @@ This function sends request to kvServer, and handles retries
 The ConfigNum is not set in the request, since it may need to query the controller and change
 */
 func (ck *Clerk) sendRequestWithChan(args *RequestArgs, replyChan chan RequestReply) {
-	TempDPrintf("Clerk: %v, sendRequest() is called with %v\n", ck.clerkId, args)
+	TempDPrintf("Clerk: %v, sendRequestWithChan() is called with %v\n", ck.clerkId, args)
 	for ck.config.Num == 0 {
 		// init config
 		ck.config = ck.sc.Query(-1)
@@ -153,6 +153,8 @@ func (ck *Clerk) sendRequestWithChan(args *RequestArgs, replyChan chan RequestRe
 		} else {
 			log.Fatalf("Clerk Config %v doesn't have gid: %v\n", ck.config, gid)
 		}
+
+		TempDPrintf("sendToServers() sends to group: %v, receives args: %v with config: %v\n", gid, args, ck.config)
 		reply = ck.sendToServers(args, servers)
 		if !reply.Succeeded {
 			// ask controler for the latest configuration.
@@ -164,7 +166,7 @@ func (ck *Clerk) sendRequestWithChan(args *RequestArgs, replyChan chan RequestRe
 		}
 
 	}
-	TempDPrintf("Clerk: %v, sendRequest() finished with %v for args: %v\n", ck.clerkId, reply, args)
+	TempDPrintf("Clerk: %v, sendRequestWithChan() finished with %v for args: %v\n", ck.clerkId, reply, args)
 	replyChan <- reply
 }
 
@@ -178,6 +180,7 @@ func (ck *Clerk) sendToServers(args *RequestArgs, servers []*labrpc.ClientEnd) R
 	var reply RequestReply
 	for server := 0; server < len(servers); server++ {
 		tempReply := RequestReply{}
+		TempDPrintf("sendToServers() calls server ShardKV.RequestHandler: %v, with args: %v\n", server, args)
 		ok := servers[server].Call("ShardKV.RequestHandler", args, &tempReply)
 		TempDPrintf("sendToServers() sent to %v, got tempReply: %v for args: %v\n", server, tempReply, args)
 		if !ok {
@@ -203,6 +206,7 @@ func (ck *Clerk) sendToServers(args *RequestArgs, servers []*labrpc.ClientEnd) R
 			TempDPrintf("sendToServers() sent to leader %v, got tempReply: %v for args: %v not successful\n", server, tempReply, args)
 			server = mathRand.Intn(len(servers))
 		}
+		TempDPrintf("sendToServers() finishes server ShardKV.RequestHandler: %v, for args: %v with reply: %v\n", server, args, reply)
 	}
 	TempDPrintf("sendToServers() finishes with %v\n", reply)
 	return reply

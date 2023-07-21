@@ -57,14 +57,15 @@ func (rf *Raft) HandleTrailingReply() {
 			// ignore highIndex which can invalidate the current leader
 			continue
 		}
-		rf.mu.Lock()
+
+		rf.lockMu("HandleTrailingReply()")
 		if rf.matchIndices[reply.Server] < reply.LastAppendedIndex {
 			rf.matchIndices[reply.Server] = reply.LastAppendedIndex
 		}
 		if rf.nextIndices[reply.Server] < reply.LastAppendedIndex+1 {
 			rf.nextIndices[reply.Server] = reply.LastAppendedIndex + 1
 		}
-		rf.mu.Unlock()
+		rf.unlockMu()
 	}
 	rf.quitTrailingReplyChan <- 1
 }

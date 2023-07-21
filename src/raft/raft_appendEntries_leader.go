@@ -6,14 +6,15 @@ import (
 )
 
 func (rf *Raft) reachConsensus(index int) {
-	rf.mu.Lock()
+
+	rf.lockMu("1 reachConsensus() with index: %v\n", index)
 	KVStoreDPrintf("Server: %v reachConsensus at index: %v,, log: %v, commitIndex: %v\n", rf.me, index, rf.log, rf.commitIndex)
 	if rf.killed() || rf.role != LEADER {
-		rf.mu.Unlock()
+		rf.unlockMu()
 		return
 	}
 	if rf.commitIndex >= index {
-		rf.mu.Unlock()
+		rf.unlockMu()
 		return
 	}
 
@@ -34,7 +35,7 @@ func (rf *Raft) reachConsensus(index int) {
 		go rf.sendAppendEntries(i, index, ch)
 		go rf.harvestAppendEntriesReply(index, ch0, stopChans[i], ch)
 	}
-	rf.mu.Unlock()
+	rf.unlockMu()
 
 	timerChan := make(chan int)
 	quitTimerChan := make(chan int)
@@ -47,14 +48,15 @@ func (rf *Raft) reachConsensus(index int) {
 		ch <- 1
 	}(quitTimerChan)
 	go rf.quitBlockedHarvests(numOfPeers, harvestedServers, stopChans)
-	rf.mu.Lock()
+
+	rf.lockMu("2 reachConsensus() with index: %v\n", index)
 	if committed {
 		KVStoreDPrintf("Server: %v succeeded the reachConsensus at index: %v, commitIndex: %v, log: %v.\n", rf.me, index, rf.commitIndex, rf.log)
 		go rf.ApplyCommand(index)
 	} else {
 		KVStoreDPrintf("Server: %v failed the reachConsensus at index: %v, commitIndex: %v, log: %v.\n", rf.me, index, rf.commitIndex, rf.log)
 	}
-	rf.mu.Unlock()
+	rf.unlockMu()
 }
 
 /*
@@ -74,15 +76,17 @@ func (rf *Raft) commit(ch0 chan AppendEntriesReply, timerChan chan int, entryInd
 		select {
 		case reply := <-ch0:
 			harvestedServers[reply.Server] = true
-			rf.mu.Lock()
+
+			rf.lockMu("1 commit() with entryIndex: %v\n", entryIndex)
 			if rf.killed() || rf.role != LEADER {
 				tryCommit = false
 			} else {
 				tryCommit, committed, successCount = rf.onReceivingAppendEntriesReply(&reply, successCount, entryIndex)
 			}
-			rf.mu.Unlock()
+			rf.unlockMu()
 		case <-timerChan:
-			rf.mu.Lock()
+
+			rf.lockMu("2 commit() with entryIndex: %v\n", entryIndex)
 			if rf.killed() || rf.role != LEADER {
 				tryCommit = false
 			} else {
@@ -93,7 +97,7 @@ func (rf *Raft) commit(ch0 chan AppendEntriesReply, timerChan chan int, entryInd
 					committed = true
 				}
 			}
-			rf.mu.Unlock()
+			rf.unlockMu()
 		}
 	}
 	return committed, harvestedServers
@@ -108,10 +112,11 @@ but it needs to check if the server still the leader or if it's killed
 */
 func (rf *Raft) sendAppendEntries(server int, issueEntryIndex int, ch chan AppendEntriesReply) {
 	fakeReply := rf.getFakeAppendEntriesReply(server, issueEntryIndex)
-	rf.mu.Lock()
+
+	rf.lockMu("sendAppendEntries() with server: %v, issueEntryIndex: %v\n", server, issueEntryIndex)
 	if rf.killed() || rf.role != LEADER {
 		// this reply will be dropped in tryCommit or in HarvestAppendEntriesReply
-		rf.mu.Unlock()
+		rf.unlockMu()
 		ch <- fakeReply
 		return
 	}
@@ -126,13 +131,13 @@ func (rf *Raft) sendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 	next := rf.nextIndices[server]
 	AppendEntries2DPrintf(funct, "next index to %v is %v \n", server, next)
 	if next < 1 {
-		rf.mu.Unlock()
+		rf.unlockMu()
 		log.Fatalf("fatal: next index to %v is %v \n", server, next)
 	}
 
 	if next <= rf.snapshotLastIndex {
 		// will be retried later
-		rf.mu.Unlock()
+		rf.unlockMu()
 		ch <- fakeReply
 		return
 	}
@@ -140,7 +145,7 @@ func (rf *Raft) sendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 	AppendEntries2DPrintf(funct, "args: %v at %v to %v\n", args, rf.me, server)
 	AppendEntries2DPrintf(funct, "log: %v at %v \n", rf.log, rf.me)
 	// targetServer := rf.peers[server]
-	rf.mu.Unlock()
+	rf.unlockMu()
 	reply := AppendEntriesReply{}
 	ok := rf.peers[server].Call("Raft.AppendEntries", &args, &reply)
 	// test shows race condition here once in 30 tests for TestOnePartition3A
@@ -162,24 +167,26 @@ handle retries
 func (rf *Raft) harvestAppendEntriesReply(issuedIndex int, sendReplyChan chan AppendEntriesReply, stopChan chan int, getReplyChan chan AppendEntriesReply) {
 	for {
 		reply := <-getReplyChan
-		rf.mu.Lock()
+
+		rf.lockMu("1 harvestAppendEntriesReply() with issuedIndex: %v\n", issuedIndex)
 		hasHigherIndex := rf.latestIssuedEntryIndices[reply.Server] > reply.IssueEntryIndex
 		isLeader := rf.role == LEADER
 
 		if reply.Success || reply.HigherTerm || hasHigherIndex || rf.killed() || !isLeader {
-			rf.mu.Unlock()
+			rf.unlockMu()
 			AppendEntriesDPrintf("reply from server %v: %v waiting for sending", reply.Server, reply)
 			select {
 			case sendReplyChan <- reply:
 				AppendEntriesDPrintf("reply from server %v sends to replyChan", reply.Server)
 			case <-stopChan:
-				rf.mu.Lock()
+
+				rf.lockMu("2 harvestAppendEntriesReply() with issuedIndex: %v\n", issuedIndex)
 				AppendEntriesDPrintf("reply from server %v sends to trailing", reply.Server)
 				if reply.Success && rf.currentTerm == reply.Term && rf.role == LEADER && !rf.killed() {
-					rf.mu.Unlock()
+					rf.unlockMu()
 					rf.trailingReplyChan <- reply
 				} else {
-					rf.mu.Unlock()
+					rf.unlockMu()
 				}
 			}
 			break
@@ -194,7 +201,7 @@ func (rf *Raft) harvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 				// log.Printf("call rf.SendAndHarvestSnapshot(reply.Server), need to de-dup")
 			}
 			go rf.sendAppendEntries(reply.Server, issuedIndex, getReplyChan)
-			rf.mu.Unlock()
+			rf.unlockMu()
 		}
 		time.Sleep(time.Duration(REAPPENDTIMEOUT) * time.Millisecond)
 	}

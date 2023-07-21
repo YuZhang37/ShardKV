@@ -13,8 +13,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 	AppendEntries2DPrintf(funct, "Command from %v received by %v at index of %v\n", args.LeaderId, rf.me, args.PrevLogIndex+1)
 
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+	rf.lockMu("AppendEntries with args: %v\n", args)
+	defer rf.unlockMu()
 	rf.fillArgsInReply(args, reply)
 	if rf.currentTerm > args.Term {
 		rf.higherTermReply(reply)

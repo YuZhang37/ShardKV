@@ -10,8 +10,9 @@ func (rf *Raft) GetState() (int, bool) {
 	// Your code here (2A).
 	// currentTerm := atomic.LoadUint64(&rf.currentTerm)
 	// role := atomic.LoadInt32(&rf.role)
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+
+	rf.lockMu("GetState()")
+	defer rf.unlockMu()
 	currentTerm := rf.currentTerm
 	role := rf.role
 	return currentTerm, role == LEADER
@@ -43,28 +44,29 @@ func (rf *Raft) killed() bool {
 
 // func (rf *Raft) IncrementLastApplied(old int) {
 // 	// atomic.AddInt32(&rf.lastApplied, 1)
-// 	// rf.mu.Lock()
+// 	//
 // 	// if rf.lastApplied == int32(old) {
 // 	// 	rf.lastApplied++
 // 	// }
-// 	// rf.mu.Unlock()
+// 	// rf.unlockMu()
 // 	atomic.CompareAndSwapInt32(&rf.lastApplied, int32(old), int32(old+1))
 
 // }
 
 // func (rf *Raft) GetLastApplied() int32 {
 // 	z := atomic.LoadInt32(&rf.lastApplied)
-// 	// rf.mu.Lock()
+// 	//
 // 	// z := rf.lastApplied
-// 	// rf.mu.Unlock()
+// 	// rf.unlockMu()
 // 	return z
 // }
 
 func (rf *Raft) isLeader() bool {
 	// ans := atomic.LoadInt32(&rf.role)
 	// return ans == LEADER
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+
+	rf.lockMu("isLeader()")
+	defer rf.unlockMu()
 	ans := rf.role
 	return ans == LEADER
 }
@@ -72,8 +74,9 @@ func (rf *Raft) isLeader() bool {
 func (rf *Raft) GetLeaderId() (int, int, int) {
 	// ans := atomic.LoadInt32(&rf.role)
 	// return ans == LEADER
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+
+	rf.lockMu("GetLeaderId()")
+	defer rf.unlockMu()
 	ans := rf.currentLeader
 	votedFor := rf.votedFor
 	term := rf.currentTerm

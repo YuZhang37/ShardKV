@@ -96,6 +96,7 @@ type ChunkedCachedReply struct {
 
 type ShardKV struct {
 	mu           sync.Mutex
+	lockChan     chan int
 	me           int
 	maxRaftState int   // snapshot if log grows this big
 	dead         int32 // set by Kill()

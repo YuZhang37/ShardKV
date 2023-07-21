@@ -128,8 +128,8 @@ func (skv *ShardKV) checkLeader(args *RequestArgs, reply *RequestReply) bool {
 }
 
 func (skv *ShardKV) checkCachedReply(args *RequestArgs, reply *RequestReply) bool {
-	skv.mu.Lock()
-	defer skv.mu.Unlock()
+	skv.lockMu("checkCachedReply() with args: %v\n", args)
+	defer skv.unlockMu()
 	// skv.shardLocks[args.Shard].Lock()
 	// defer skv.shardLocks[args.Shard].Unlock()
 	chunkedCachedReplies, exists := skv.serveCachedReplies[args.Shard]
@@ -277,8 +277,8 @@ func (skv *ShardKV) commandExecutor() {
 
 func (skv *ShardKV) processCommand(commandIndex int, commandTerm int, commandFromRaft interface{}) {
 	skv.tempDPrintf("ShardKV: %v, processCommand() is called with commandIndex: %v, commandTerm: %v, commandFromRaft: %v\n", skv.me, commandIndex, commandTerm, commandFromRaft)
-	skv.mu.Lock()
-	defer skv.mu.Unlock()
+	skv.lockMu("processCommand() with commandIndex: %v, commandTerm: %v, commandFromRaft: %v\n", commandIndex, commandTerm, commandFromRaft)
+	defer skv.unlockMu()
 
 	// check command index and term
 	if commandIndex != skv.latestAppliedIndex+1 {
@@ -492,13 +492,13 @@ func (skv *ShardKV) snapshotController() {
 	for !quit {
 		select {
 		case <-skv.rf.SignalSnapshot:
-			skv.mu.Lock()
+			skv.lockMu("snapshotController()\n")
 			data := skv.encodeSnapshot()
 			snapshot := raft.SnapshotInfo{
 				Data:              data,
 				LastIncludedIndex: skv.latestAppliedIndex,
 			}
-			skv.mu.Unlock()
+			skv.unlockMu()
 			quit1 := false
 			for !quit1 {
 				select {
@@ -535,12 +535,12 @@ func (skv *ShardKV) configChecker() {
 		}
 		// no need to lock,
 		// seqNum is incremented when applying, the controller should not cache the query
-		skv.mu.Lock()
+		skv.lockMu("1 configChecker()\n")
 		skv.leaderId = skv.me
 		controllerSeqNum := skv.controllerSeqNum
-		skv.mu.Unlock()
+		skv.unlockMu()
 		newConfig := skv.controllerClerk.QueryWithSeqNum(-1, controllerSeqNum)
-		skv.mu.Lock()
+		skv.lockMu("2 configChecker()\n")
 		// skv.tempDPrintf("configChecker queries newConfig: %v, old config: %v\n", newConfig, skv.config)
 		if newConfig.Num > skv.config.Num {
 			// skv.tempDPrintf("configChecker gets newConfig: %v, old config: %v\n", newConfig, skv.config)
@@ -549,14 +549,14 @@ func (skv *ShardKV) configChecker() {
 				Operation: UPDATECONFIG,
 				Config:    newConfig,
 			}
-			skv.mu.Unlock()
+			skv.unlockMu()
 			if unsafe.Sizeof(command) >= MAXKVCOMMANDSIZE {
 				log.Fatalf("Fatal: command is too large, max allowed command size is %v\n", MAXKVCOMMANDSIZE)
 			}
 			skv.tempDPrintf("configChecker for newConfig: %v and issues ConfigUpdateCommand: %v\n", newConfig, command)
 			skv.startCommit(command)
 		} else {
-			skv.mu.Unlock()
+			skv.unlockMu()
 		}
 	}
 }
@@ -570,7 +570,7 @@ func (skv *ShardKV) shadowShardInspector() {
 	quit := false
 	for !quit {
 		time.Sleep(time.Duration(INSPECTSHADOWTIMEOUT) * time.Millisecond)
-		skv.mu.Lock()
+		skv.lockMu("shadowShardInspector()\n")
 		for index := range skv.shadowShardGroups {
 			if !skv.shadowShardGroups[index].Processing {
 				skv.moveShardDPrintf("shadowShardInspector gets a shardGroup with no thread processing: %v\n", skv.shadowShardGroups[index])
@@ -582,7 +582,7 @@ func (skv *ShardKV) shadowShardInspector() {
 		if skv.killed() {
 			quit = true
 		}
-		skv.mu.Unlock()
+		skv.unlockMu()
 	}
 	skv.moveShardDPrintf("shadowShardInspector quit!")
 }

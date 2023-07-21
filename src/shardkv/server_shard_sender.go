@@ -31,13 +31,13 @@ send ACK requests
 */
 
 func (skv *ShardKV) transmitToGroup(index int) {
-	skv.mu.Lock()
+	skv.lockMu("transmitToGroup() with index: %v\n", index)
 	if index >= len(skv.shadowShardGroups) {
-		skv.mu.Unlock()
+		skv.unlockMu()
 		return
 	}
 	group := skv.shadowShardGroups[index]
-	skv.mu.Unlock()
+	skv.unlockMu()
 	skv.transmitSenderDPrintf("transmitToGroup() receives group: %v\n", group)
 	// no currency on read/write a group
 	var servers []*labrpc.ClientEnd
@@ -123,8 +123,8 @@ func (skv *ShardKV) sendRequestToServers(args *TransmitShardArgs, servers []*lab
 
 func (skv *ShardKV) removeShardFromShadow(targetGID int, shard int) ShadowShardGroup {
 	skv.transmitSenderDPrintf("removeShardFromShadow() receives targetGID: %v, shard: %v\n", targetGID, shard)
-	skv.mu.Lock()
-	defer skv.mu.Unlock()
+	skv.lockMu("removeShardFromShadow() with targetGID: %v, shard: %v\n", targetGID, shard)
+	defer skv.unlockMu()
 	var index int
 	var group *ShadowShardGroup
 	var found bool = false
