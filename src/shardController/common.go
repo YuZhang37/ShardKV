@@ -90,11 +90,12 @@ type innerConfig struct {
 	Operation  string
 }
 type ShardController struct {
-	mu      sync.Mutex
-	dead    int32 // set by Kill()
-	me      int
-	rf      *raft.Raft
-	applyCh chan raft.ApplyMsg
+	mu       sync.Mutex
+	lockChan chan int
+	dead     int32 // set by Kill()
+	me       int
+	rf       *raft.Raft
+	applyCh  chan raft.ApplyMsg
 	// snapshot if log grows this big
 	maxRaftState int // persist
 

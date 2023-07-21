@@ -12,6 +12,54 @@ import (
 	"6.5840/raft"
 )
 
+// servers[] contains the ports of the set of
+// servers that will cooperate via Raft to
+// form the fault-tolerant shardController service.
+// me is the index of the current server in servers[].
+func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister) *ShardController {
+	labgob.Register(ControllerCommand{})
+	sc := new(ShardController)
+	sc.lockChan = nil
+	sc.me = me
+	maxRaftState := -1
+	// command size checking will not be disabled
+	if maxRaftState != -1 {
+		maxRaftState = 8 * maxRaftState
+	}
+	sc.applyCh = make(chan raft.ApplyMsg)
+	sc.rf = raft.Make(servers, me, persister, sc.applyCh, maxRaftState)
+	sc.maxRaftState = maxRaftState
+
+	sc.cachedReplies = make(map[int64]ControllerReply)
+	sc.clerkChans = make(map[int64]chan ControllerReply)
+
+	sc.latestAppliedIndex = 0
+	sc.latestAppliedTerm = 0
+
+	sc.configs = make([]innerConfig, 0)
+	sc.initConfig(0)
+
+	go sc.commandExecutor()
+	go sc.snapshotController()
+
+	return sc
+}
+
+// all Shards are managed by group 0, which has no servers
+func (sc *ShardController) initConfig(num int) {
+	config := innerConfig{}
+	config.Operation = "Initialization"
+	config.Num = num
+	config.Groups = make(map[int][]string)
+	config.ServerNames = make(map[string]int)
+	config.GroupInfos = make([]GroupInfo, 0)
+	config.UninitializedShards = make(map[int]bool)
+	for i := 0; i < NShards; i++ {
+		config.UninitializedShards[i] = true
+	}
+	sc.configs = append(sc.configs, config)
+}
+
 func (sc *ShardController) RequestHandler(args *ControllerRequestArgs, reply *ControllerReply) {
 	sc.tempDPrintf("ShardController: %v, RequestHandler() is called with %v\n", sc.me, args)
 	sc.fillReply(args, reply)
@@ -25,18 +73,18 @@ func (sc *ShardController) RequestHandler(args *ControllerRequestArgs, reply *Co
 	if command == nil {
 		return
 	}
-	sc.mu.Lock()
+	sc.lockMu("RequestHandler() with args 1: %v\n", args)
 	clerkChan := make(chan ControllerReply)
 	sc.clerkChans[args.ClerkId] = clerkChan
-	sc.mu.Unlock()
+	sc.unlockMu()
 	sc.tempDPrintf("ShardController: %v, Got command: ClerkId=%v, SeqNum=%v Operation=%v, Command: %v\n", sc.me, command.ClerkId, command.SeqNum, command.Operation, command)
 	if !sc.startCommit(command, reply) {
 		return
 	}
 	sc.waitReply(clerkChan, args, reply)
-	sc.mu.Lock()
+	sc.lockMu("RequestHandler() with args 2: %v\n", args)
 	delete(sc.clerkChans, args.ClerkId)
-	sc.mu.Unlock()
+	sc.unlockMu()
 	sc.tempDPrintf("ShardController: %v, RequestHandler() finishes with %v\n", sc.me, reply)
 }
 
@@ -57,16 +105,16 @@ func (sc *ShardController) checkLeader(args *ControllerRequestArgs, reply *Contr
 }
 
 func (sc *ShardController) checkCachedReply(args *ControllerRequestArgs, reply *ControllerReply) bool {
-	sc.mu.Lock()
+	sc.lockMu("checkCachedReply() with args: %v\n", args)
 	cachedReply := sc.cachedReplies[args.ClerkId]
 	if args.SeqNum == cachedReply.SeqNum {
 		// the previous reply is lost
 		sc.copyReply(&cachedReply, reply)
-		sc.mu.Unlock()
+		sc.unlockMu()
 		sc.tempDPrintf("ShardController: %v caches reply. Reply: %v\n", sc.me, cachedReply)
 		return true
 	}
-	sc.mu.Unlock()
+	sc.unlockMu()
 	return false
 }
 
@@ -179,8 +227,8 @@ or at the start of a new leader
 for both cases, sc.clerkChans will be empty
 */
 func (sc *ShardController) processSnapshot(snapshotIndex int, snapshotTerm int, snapshot []byte) {
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
+	sc.lockMu("processSnapshot() with snapshotIndex: %v, snapshotTerm: %v \n", snapshotIndex, snapshotTerm)
+	defer sc.unlockMu()
 	sc.decodeSnapshot(snapshot)
 	sc.latestAppliedIndex = snapshotIndex
 	sc.latestAppliedTerm = snapshotTerm
@@ -188,8 +236,8 @@ func (sc *ShardController) processSnapshot(snapshotIndex int, snapshotTerm int, 
 
 func (sc *ShardController) processCommand(commandIndex int, commandTerm int, commandFromRaft interface{}) {
 	sc.tempDPrintf("ShardController %v, processCommand() is called with commandIndex: %v, commandTerm: %v, commandFromRaft: %v\n", sc.me, commandIndex, commandTerm, commandFromRaft)
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
+	sc.lockMu("processCommand() with commandIndex: %v, commandTerm: %v, commandFromRaft: %v\n", commandIndex, commandTerm, commandFromRaft)
+	defer sc.unlockMu()
 	if commandIndex != sc.latestAppliedIndex+1 {
 		log.Fatalf("ShardController %v, expecting log index: %v, got %v", sc.me, sc.latestAppliedIndex+1, commandIndex)
 	} else {
@@ -254,14 +302,14 @@ func (sc *ShardController) processCommand(commandIndex int, commandTerm int, com
 
 func (sc *ShardController) sendReply(reply *ControllerReply) {
 	sc.tempDPrintf("ShardController %v, sends to: %v reply %v \n", sc.me, reply, reply.ClerkId)
-	sc.mu.Lock()
+	sc.lockMu("sendReply() with reply: %v\n", reply)
 	clerkChan, exists := sc.clerkChans[reply.ClerkId]
 	if !exists {
 		// the clerk is not waiting, no need to send reply
-		sc.mu.Unlock()
+		sc.unlockMu()
 		return
 	}
-	sc.mu.Unlock()
+	sc.unlockMu()
 	quit := false
 	for !quit {
 		select {
@@ -280,13 +328,13 @@ func (sc *ShardController) snapshotController() {
 	for !quit {
 		select {
 		case <-sc.rf.SignalSnapshot:
-			sc.mu.Lock()
+			sc.lockMu("snapshotController()\n")
 			data := sc.encodeSnapshot()
 			snapshot := raft.SnapshotInfo{
 				Data:              data,
 				LastIncludedIndex: sc.latestAppliedIndex,
 			}
-			sc.mu.Unlock()
+			sc.unlockMu()
 			quit1 := false
 			for !quit1 {
 				select {
@@ -364,51 +412,4 @@ func (sc *ShardController) killed() bool {
 // needed by shardsc tester
 func (sc *ShardController) Raft() *raft.Raft {
 	return sc.rf
-}
-
-// servers[] contains the ports of the set of
-// servers that will cooperate via Raft to
-// form the fault-tolerant shardController service.
-// me is the index of the current server in servers[].
-func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister) *ShardController {
-	labgob.Register(ControllerCommand{})
-	sc := new(ShardController)
-	sc.me = me
-	maxRaftState := -1
-	// command size checking will not be disabled
-	if maxRaftState != -1 {
-		maxRaftState = 8 * maxRaftState
-	}
-	sc.applyCh = make(chan raft.ApplyMsg)
-	sc.rf = raft.Make(servers, me, persister, sc.applyCh, maxRaftState)
-	sc.maxRaftState = maxRaftState
-
-	sc.cachedReplies = make(map[int64]ControllerReply)
-	sc.clerkChans = make(map[int64]chan ControllerReply)
-
-	sc.latestAppliedIndex = 0
-	sc.latestAppliedTerm = 0
-
-	sc.configs = make([]innerConfig, 0)
-	sc.initConfig(0)
-
-	go sc.commandExecutor()
-	go sc.snapshotController()
-
-	return sc
-}
-
-// all Shards are managed by group 0, which has no servers
-func (sc *ShardController) initConfig(num int) {
-	config := innerConfig{}
-	config.Operation = "Initialization"
-	config.Num = num
-	config.Groups = make(map[int][]string)
-	config.ServerNames = make(map[string]int)
-	config.GroupInfos = make([]GroupInfo, 0)
-	config.UninitializedShards = make(map[int]bool)
-	for i := 0; i < NShards; i++ {
-		config.UninitializedShards[i] = true
-	}
-	sc.configs = append(sc.configs, config)
 }

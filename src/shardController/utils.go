@@ -3,11 +3,51 @@ package shardController
 import (
 	"fmt"
 	"log"
+	"time"
 )
 
 const TempDebug = false
 const FollowerDebug = false
 const Temp2Debug = false
+const SnapshotDebug = false
+
+const WatchLock = true
+
+func (sc *ShardController) lockMu(format string, a ...interface{}) {
+	sc.mu.Lock()
+	if WatchLock {
+		sc.lockChan = make(chan int)
+		go sc.testLock(format, a...)
+	}
+}
+
+func (sc *ShardController) unlockMu() {
+	if WatchLock {
+		sc.lockChan <- 1
+	}
+	sc.mu.Unlock()
+}
+
+func (sc *ShardController) testLock(format string, a ...interface{}) {
+	quit := false
+	for !quit {
+		select {
+		case <-sc.lockChan:
+			quit = true
+		case <-time.After(5 * time.Second):
+			sc.snapshot2DPrintf("ShardController testLock(): "+format+"is not unlocked", a...)
+		}
+	}
+}
+
+func (sc *ShardController) snapshot2DPrintf(format string, a ...interface{}) (n int, err error) {
+	// if SnapshotDebug && (leaderId == skv.me || FollowerDebug) {
+	if SnapshotDebug {
+		prefix := fmt.Sprintf("ShardKVServer: %v ", sc.me)
+		log.Printf(prefix+format, a...)
+	}
+	return
+}
 
 func TempDPrintf(format string, a ...interface{}) (n int, err error) {
 	if TempDebug {
