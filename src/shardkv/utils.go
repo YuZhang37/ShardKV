@@ -44,10 +44,12 @@ func (skv *ShardKV) testLock(format string, a ...interface{}) {
 }
 
 func (skv *ShardKV) snapshot2DPrintf(format string, a ...interface{}) (n int, err error) {
-	// if SnapshotDebug && (leaderId == skv.me || FollowerDebug) {
 	if SnapshotDebug {
+		votedFor := int(skv.rf.GetVotedFor())
 		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
-		log.Printf(prefix+format, a...)
+		if votedFor == skv.me || FollowerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
@@ -81,52 +83,55 @@ func (skv *ShardKV) printState(msg string) {
 }
 func (skv *ShardKV) tempDPrintf(format string, a ...interface{}) (n int, err error) {
 	if TempDebug {
-		log.Printf("Group: %v, ShardKVServer: %v, try to get votedFor\n", skv.gid, skv.me)
-		// _, votedFor, _ := skv.rf.GetLeaderId()
+		votedFor := int(skv.rf.GetVotedFor())
 		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
-		// log.Printf("Group: %v, ShardKVServer: %v, got votedFor: %v for msg: %v\n", skv.gid, skv.me, votedFor, prefix)
-		// if votedFor == skv.me || FollowerDebug {
-		log.Printf(prefix+format, a...)
-		// }
+		if votedFor == skv.me || FollowerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
 func (skv *ShardKV) transmitSenderDPrintf(format string, a ...interface{}) (n int, err error) {
-	// _, votedFor, _ := skv.rf.GetLeaderId()
-	// if TransmitSenderDebug && (votedFor == skv.me || FollowerDebug) {
 	if TransmitSenderDebug {
+		votedFor := int(skv.rf.GetVotedFor())
 		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
-		log.Printf(prefix+format, a...)
+		if votedFor == skv.me || FollowerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
 func (skv *ShardKV) transmitHandlerDPrintf(format string, a ...interface{}) (n int, err error) {
-	// _, votedFor, _ := skv.rf.GetLeaderId()
-	// if TransmitHandlerDebug && (votedFor == skv.me || FollowerDebug) {
 	if TransmitHandlerDebug {
+		votedFor := int(skv.rf.GetVotedFor())
 		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
-		log.Printf(prefix+format, a...)
+		if votedFor == skv.me || FollowerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
 func (skv *ShardKV) moveShardDPrintf(format string, a ...interface{}) (n int, err error) {
-	// _, votedFor, _ := skv.rf.GetLeaderId()
-	// if MoveShardDebug && (votedFor == skv.me || FollowerDebug) {
 	if MoveShardDebug {
+		votedFor := int(skv.rf.GetVotedFor())
 		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
-		log.Printf(prefix+format, a...)
+		if votedFor == skv.me || FollowerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
 func (skv *ShardKV) snapshotDPrintf(leaderId int, format string, a ...interface{}) (n int, err error) {
-	// if SnapshotDebug && (leaderId == skv.me || FollowerDebug) {
 	if SnapshotDebug {
+		votedFor := int(skv.rf.GetVotedFor())
 		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
-		log.Printf(prefix+format, a...)
+		if votedFor == skv.me || FollowerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
