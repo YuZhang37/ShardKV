@@ -128,7 +128,8 @@ func (rf *Raft) readPersist() bool {
 	reader := bytes.NewBuffer(data)
 	d := labgob.NewDecoder(reader)
 
-	var currentTerm, votedFor, snapshotLastIndex, snapshotLastTerm int
+	var currentTerm, snapshotLastIndex, snapshotLastTerm int
+	var votedFor int32
 	var logEntries []LogEntry
 
 	if d.Decode(&currentTerm) != nil ||
@@ -139,7 +140,7 @@ func (rf *Raft) readPersist() bool {
 		log.Fatalf("decoding error!\n")
 	} else {
 		rf.currentTerm = currentTerm
-		rf.votedFor = votedFor
+		rf.setVotedFor(int(votedFor))
 		rf.snapshotLastIndex = snapshotLastIndex
 		rf.snapshotLastTerm = snapshotLastTerm
 		rf.log = logEntries

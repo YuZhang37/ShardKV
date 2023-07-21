@@ -95,9 +95,9 @@ func (sc *ShardController) fillReply(args *ControllerRequestArgs, reply *Control
 }
 
 func (sc *ShardController) checkLeader(args *ControllerRequestArgs, reply *ControllerReply) bool {
-	leaderId, votedFor, term := sc.rf.GetLeaderId()
+	votedFor := sc.rf.GetVotedFor()
 	if votedFor != sc.me {
-		sc.tempDPrintf("ShardController: %v is not the leader. LeaderId: %v, votedFor: %v, term: %v\n", sc.me, leaderId, votedFor, term)
+		sc.tempDPrintf("ShardController: %v is not the leader. votedFor: %v\n", sc.me, votedFor)
 		reply.LeaderId = votedFor
 		return false
 	}

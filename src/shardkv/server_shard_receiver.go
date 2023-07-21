@@ -58,9 +58,9 @@ func (skv *ShardKV) fillReply(args *TransmitShardArgs, reply *TransmitShardReply
 }
 
 func (skv *ShardKV) checkLeaderForTransmit(args *TransmitShardArgs, reply *TransmitShardReply) bool {
-	leaderId, votedFor, term := skv.rf.GetLeaderId()
+	votedFor := skv.rf.GetVotedFor()
 	if votedFor != skv.me {
-		TempDPrintf("ShardKV: %v is not the leader. LeaderId: %v, votedFor: %v, term: %v\n", skv.me, leaderId, votedFor, term)
+		TempDPrintf("ShardKV: %v is not the leader. votedFor: %v\n", skv.me, votedFor)
 		return false
 	}
 	return true

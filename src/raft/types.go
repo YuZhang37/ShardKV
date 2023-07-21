@@ -155,7 +155,7 @@ type Raft struct {
 		every time currentTerm increments, votedFor needs to reset to -1
 		votedFor is maintained during the whole term, even when the leader is elected, which can avoid the election issued by a server on the same term.
 	*/
-	votedFor int
+	votedFor int32
 	log      []LogEntry
 
 	/*

@@ -32,8 +32,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		ElectionDPrintf(" %v up-to-date as %v: %v\n", args.CandidateId, rf.me, up_to_date)
 	}
 
-	if up_to_date && (rf.votedFor == -1 || rf.votedFor == args.CandidateId) {
-		rf.votedFor = args.CandidateId
+	if up_to_date && (int(rf.votedFor) == -1 || int(rf.votedFor) == args.CandidateId) {
+		rf.setVotedFor(args.CandidateId)
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = true
 		rf.msgReceived = true
@@ -167,7 +167,7 @@ func (rf *Raft) Election() {
 func (rf *Raft) upgradeToCandidate() {
 	// change all relevant states to be candidate
 	rf.currentTerm++
-	rf.votedFor = rf.me
+	rf.setVotedFor(rf.me)
 	rf.role = CANDIDATE
 	rf.currentLeader = -1
 	rf.currentAppended = 0

@@ -189,7 +189,7 @@ func ShardKVDPrintf(format string, a ...interface{}) (n int, err error) {
 }
 
 func (rf *Raft) snapshotDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugShardKV && rf.votedFor == rf.me {
+	if DebugShardKV && int(rf.votedFor) == rf.me {
 		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v ", rf.gid, rf.me)
 		log.Printf(prefix+format, a...)
 	}

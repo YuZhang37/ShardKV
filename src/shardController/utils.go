@@ -57,7 +57,7 @@ func TempDPrintf(format string, a ...interface{}) (n int, err error) {
 }
 
 func (sc *ShardController) tempDPrintf(format string, a ...interface{}) (n int, err error) {
-	_, votedFor, _ := sc.rf.GetLeaderId()
+	votedFor := sc.rf.GetVotedFor()
 	if TempDebug && (votedFor == sc.me || FollowerDebug) {
 		// if TempDebug {
 		prefix := fmt.Sprintf("ShardController: %v ", sc.me)
@@ -67,7 +67,7 @@ func (sc *ShardController) tempDPrintf(format string, a ...interface{}) (n int, 
 }
 
 func (sc *ShardController) processPrintf(start bool, operation string, command ControllerCommand, reply ControllerReply) (n int, err error) {
-	_, votedFor, _ := sc.rf.GetLeaderId()
+	votedFor := sc.rf.GetVotedFor()
 	if TempDebug && (votedFor == sc.me || FollowerDebug) {
 		// if TempDebug {
 		if start {

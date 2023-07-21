@@ -119,9 +119,9 @@ func (skv *ShardKV) RequestHandler(args *RequestArgs, reply *RequestReply) {
 }
 
 func (skv *ShardKV) checkLeader(args *RequestArgs, reply *RequestReply) bool {
-	leaderId, votedFor, term := skv.rf.GetLeaderId()
+	votedFor := skv.rf.GetVotedFor()
 	if votedFor != skv.me {
-		skv.tempDPrintf("ShardKV: %v is not the leader. LeaderId: %v, votedFor: %v, term: %v\n", skv.me, leaderId, votedFor, term)
+		skv.tempDPrintf("ShardKV: %v is not the leader. votedFor: %v\n", skv.me, votedFor)
 		return false
 	}
 	return true

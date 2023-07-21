@@ -40,9 +40,9 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 }
 
 func (kv *KVServer) checkLeader(args *RequestArgs, reply *RequestReply) bool {
-	leaderId, votedFor, term := kv.rf.GetLeaderId()
+	votedFor := kv.rf.GetVotedFor()
 	if votedFor != kv.me {
-		TempDPrintf("KVServer: %v is not the leader. LeaderId: %v, votedFor: %v, term: %v\n", kv.me, leaderId, votedFor, term)
+		TempDPrintf("KVServer: %v is not the leader. votedFor: %v\n", kv.me, votedFor)
 		reply.LeaderId = votedFor
 		return false
 	}
