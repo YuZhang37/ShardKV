@@ -33,7 +33,7 @@ func (rf *Raft) insideSnapshot(lastIncludedIndex int, snapshot []byte) int {
 	Snapshot2DPrintf("server: %v, insideSnapshot() is called with lastIncludedIndex %v,\n", rf.me, lastIncludedIndex)
 
 	if lastIncludedIndex <= 0 || lastIncludedIndex > rf.commitIndex {
-		log.Fatalf("Snapshot Error: server: %v, rf.role: %v, lastIndex %v, commitIndex: %v\n", rf.me, rf.role, lastIncludedIndex, rf.commitIndex)
+		log.Fatalf("Fatal: Raft Snapshot Error: server: %v, rf.role: %v, lastIndex %v, commitIndex: %v\n", rf.me, rf.role, lastIncludedIndex, rf.commitIndex)
 	}
 	/*
 		stale snapshot: < rf.snapshotLastIndex
@@ -46,7 +46,7 @@ func (rf *Raft) insideSnapshot(lastIncludedIndex int, snapshot []byte) int {
 	}
 	indexInLiveLog := rf.findEntryWithIndexInLog(lastIncludedIndex, rf.log, rf.snapshotLastIndex)
 	if indexInLiveLog >= len(rf.log) || indexInLiveLog < 0 {
-		log.Fatalf("Snapshot Error: indexInLiveLog: %v, len(log): %v, log %v doesn't contain index: %v\n", indexInLiveLog, rf.log, len(rf.log), lastIncludedIndex)
+		log.Fatalf("Fatal: Raft Snapshot Error: indexInLiveLog: %v, len(log): %v, log %v doesn't contain index: %v\n", indexInLiveLog, rf.log, len(rf.log), lastIncludedIndex)
 	}
 	rf.snapshotLastIndex = lastIncludedIndex
 	rf.snapshotLastTerm = rf.log[indexInLiveLog].Term

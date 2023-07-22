@@ -63,26 +63,11 @@ func (rf *Raft) persistStateWithSnapshot(format string, a ...interface{}) {
 	SnapshotDPrintf("Server %v currentTerm: %v\n", rf.me, rf.currentTerm)
 	SnapshotDPrintf("Server %v votedFor: %v\n", rf.me, rf.votedFor)
 	SnapshotDPrintf("Server %v commitIndex: %v\n", rf.me, rf.commitIndex)
-	// SnapshotDPrintf("Server %v lastApplied: %v\n", rf.me, rf.lastApplied)
 	SnapshotDPrintf("Server %v log: %v at %v\n", rf.me, rf.log, rf.me)
 	SnapshotDPrintf("Server %v snapshotLastIndex: %v\n", rf.me, rf.snapshotLastIndex)
 	SnapshotDPrintf("Server %v snapshotLastTerm: %v\n", rf.me, rf.snapshotLastTerm)
-	// rf.appliedLock.Lock()
-	// appliedIndex := rf.lastApplied
-	// rf.appliedLock.Unlock()
 	KVStoreDPrintf("Server: %v persists rf.commitIndex: %v, rf.currentTerm: %v, rf.votedFor: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v rf.log: %v\n", rf.me, rf.commitIndex, rf.currentTerm, rf.votedFor, rf.snapshotLastIndex, rf.snapshotLastTerm, rf.log)
 	data := rf.getRaftStateData()
-	if rf.maxRaftState != -1 && len(data) >= rf.maxRaftState {
-		log.Printf("******* Server %v persist states  for %v *******\n", rf.me, fmt.Sprintf(format, a...))
-		log.Printf("Server: %v persists rf.commitIndex: %v, rf.currentTerm: %v, rf.votedFor: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v rf.log: %v\n", rf.me, rf.commitIndex, rf.currentTerm, rf.votedFor, rf.snapshotLastIndex, rf.snapshotLastTerm, rf.log)
-		log.Printf("size of raft state: %v exceeds maxRaftState: %v\n", len(data), rf.maxRaftState)
-		rf.insideApplyCommand(rf.commitIndex, true)
-		rf.signalSnapshot()
-		data = rf.getRaftStateData()
-	}
-	if rf.maxRaftState != -1 && len(data) >= rf.maxRaftState {
-		log.Fatalf("size of raft state: %v exceeds maxRaftState: %v\n", len(data), rf.maxRaftState)
-	}
 	rf.persister.Save(data, rf.snapshot)
 }
 

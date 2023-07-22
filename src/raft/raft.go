@@ -43,10 +43,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		rf.gid = opts[1].(int)
 	}
 
-	if rf.maxRaftState != -1 {
+	if rf.maxRaftState >= 0 {
 		rf.maxLogSize = rf.maxRaftState - RESERVESPACE
 	} else {
-		rf.maxLogSize = -1
+		rf.maxLogSize = rf.maxRaftState
 	}
 	rf.commitIndex = 0
 	rf.lastApplied = 0
@@ -138,7 +138,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	newLog := append(rf.log, entry)
 	size := rf.getLogSize(newLog)
-	if rf.maxLogSize != -1 && size >= rf.maxLogSize {
+	if rf.maxLogSize >= 0 && size >= rf.maxLogSize {
 		// snapshot enabled
 		rf.logRaftState("from leader: before signalSnapshot")
 		rf.logRaftState2(size)
@@ -159,6 +159,30 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 			index = -1
 			term = -1
 			return index, term, isLeader
+		}
+	}
+	if rf.maxLogSize == -2 {
+		// must apply the command first and take a snapshot if there is log entry
+		rf.logRaftState("from leader: before signalSnapshot")
+		rf.logRaftState2(size)
+		if len(rf.log) > 0 {
+			if rf.commitIndex > rf.snapshotLastIndex {
+				// there are log entries to compact
+				rf.snapshotDPrintf("Start() calls insideApplyCommand...")
+				rf.insideApplyCommand(rf.commitIndex, true)
+				rf.snapshotDPrintf("Start() finishes insideApplyCommand...")
+				rf.snapshotDPrintf("Start() calls signalSnapshot...")
+				rf.signalSnapshot()
+				rf.snapshotDPrintf("Start() finishes signalSnapshot...")
+				rf.persistState("server %v Start() snapshots for entry %v", rf.me, entry)
+				rf.logRaftState("from leader: after signalSnapshot")
+				newLog = append(rf.log, entry)
+			}
+			if len(rf.log) > 0 {
+				index = -1
+				term = -1
+				return index, term, isLeader
+			}
 		}
 	}
 	rf.log = newLog

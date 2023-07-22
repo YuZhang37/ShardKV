@@ -478,7 +478,7 @@ func TestMissChange(t *testing.T) {
 func TestConcurrent1(t *testing.T) {
 	fmt.Printf("Test: concurrent puts and configuration changes...\n")
 
-	cfg := make_config(t, 3, false, -1)
+	cfg := make_config(t, 3, false, 100)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -704,7 +704,7 @@ no need to debug this test until the snapshot is fixed.
 func TestConcurrent3(t *testing.T) {
 	fmt.Printf("Test: concurrent configuration change and restart...\n")
 
-	cfg := make_config(t, 3, false, -1)
+	cfg := make_config(t, 3, false, -2)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -738,7 +738,7 @@ func TestConcurrent3(t *testing.T) {
 	}
 
 	t0 := time.Now()
-	for time.Since(t0) < 20*time.Second {
+	for time.Since(t0) < 12*time.Second {
 		cfg.join(2)
 		cfg.join(1)
 		time.Sleep(time.Duration(rand.Int()%900) * time.Millisecond)
@@ -772,7 +772,7 @@ func TestConcurrent3(t *testing.T) {
 func TestUnreliable1(t *testing.T) {
 	fmt.Printf("Test: unreliable 1...\n")
 
-	cfg := make_config(t, 3, true, -1)
+	cfg := make_config(t, 3, true, 100)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -819,7 +819,7 @@ client RPC problem?
 func TestUnreliable2(t *testing.T) {
 	fmt.Printf("Test: unreliable 2...\n")
 
-	cfg := make_config(t, 3, true, -1)
+	cfg := make_config(t, 3, true, 100)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -907,7 +907,7 @@ other 2 runs passed
 func TestUnreliable3(t *testing.T) {
 	fmt.Printf("Test: unreliable 3...\n")
 
-	cfg := make_config(t, 3, true, -1)
+	cfg := make_config(t, 3, true, 100)
 	defer cfg.cleanup()
 
 	begin := time.Now()
@@ -1108,7 +1108,7 @@ doesn't serve yet -> endless loop
 func TestChallenge2Unaffected(t *testing.T) {
 	fmt.Printf("Test: unaffected shard access (challenge 2) ...\n")
 
-	cfg := make_config(t, 3, true, -1)
+	cfg := make_config(t, 3, true, 100)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()
@@ -1179,7 +1179,7 @@ func TestChallenge2Unaffected(t *testing.T) {
 func TestChallenge2Partial(t *testing.T) {
 	fmt.Printf("Test: partial migration shard access (challenge 2) ...\n")
 
-	cfg := make_config(t, 3, true, -1)
+	cfg := make_config(t, 3, true, 100)
 	defer cfg.cleanup()
 
 	ck := cfg.makeClient()

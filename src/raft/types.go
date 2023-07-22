@@ -137,8 +137,11 @@ type Raft struct {
 	SignalSnapshot chan int
 	SnapshotChan   chan SnapshotInfo
 
+	// maxLogSize + reserved space, reserved space is for other metadata
 	maxRaftState int
-	maxLogSize   int
+	// -1 for no snapshot, -2 for no log entries before appending,
+	// 8*non-negative number is the maxLogSize
+	maxLogSize int
 
 	/*
 		states for all servers (log index)

@@ -141,9 +141,10 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 	for ; j < len(args.Entries); j++ {
 		// append new log entries to the server's log
 		entry := args.Entries[j]
+		_, isNoop := entry.Command.(Noop)
 		newLog := append(rf.log, entry)
 		size := rf.getLogSize(newLog)
-		if rf.maxLogSize != -1 && size >= rf.maxLogSize {
+		if !isNoop && rf.maxLogSize >= 0 && size >= rf.maxLogSize {
 			// snapshot enabled
 			rf.logRaftState("from follower: before signalSnapshot")
 			rf.logRaftState2(size)
@@ -156,24 +157,43 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 				rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
 				rf.logRaftState("from leader: after signalSnapshot")
 			}
+			if size >= rf.maxLogSize {
+				// snapshot enabled and size still exceeds the limit after taking the snapshot
+				// stop appending
+				break
+			}
 		}
 
-		if rf.maxLogSize != -1 && size >= rf.maxLogSize {
-			// snapshot disabled and size exceeds than limit
-			// stop appending
-			break
-		} else {
-			// snapshot disabled or size is less than limit
-			rf.log = newLog
-			rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
-			// update commitIndex and currentAppended
-			// each time a new log entry is appended
-			if entry.Index <= args.LeaderCommitIndex {
-				rf.commitIndex = entry.Index
-				go rf.ApplyCommand(rf.commitIndex)
+		if !isNoop && rf.maxLogSize == -2 {
+			// must apply the command first and take a snapshot if there is log entry
+			rf.logRaftState("from follower: before signalSnapshot")
+			rf.logRaftState2(size)
+			if len(rf.log) > 0 {
+				if rf.commitIndex > rf.snapshotLastIndex {
+					// there are log entries to compact, compact them
+					rf.insideApplyCommand(rf.commitIndex, true)
+					rf.signalSnapshot()
+					newLog = append(rf.log, entry)
+					rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
+					rf.logRaftState("from leader: after signalSnapshot")
+				}
+				if len(rf.log) > 0 {
+					break
+				}
 			}
-			rf.currentAppended = args.Entries[j].Index
 		}
+
+		// snapshot disabled or size is below the limit
+		rf.log = newLog
+		rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
+		// update commitIndex and currentAppended
+		// each time a new log entry is appended
+		if entry.Index <= args.LeaderCommitIndex {
+			rf.commitIndex = entry.Index
+			go rf.ApplyCommand(rf.commitIndex)
+		}
+		rf.currentAppended = args.Entries[j].Index
+
 	}
 	reply.LastAppendedIndex = rf.currentAppended
 }
