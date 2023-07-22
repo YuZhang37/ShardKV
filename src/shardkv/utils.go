@@ -11,7 +11,7 @@ const MoveShardDebug = true
 const TransmitSenderDebug = true
 const TransmitHandlerDebug = true
 const SnapshotDebug = true
-const FollowerDebug = false
+const FollowerDebug = true
 const Temp2Debug = true
 const TestDebug = true
 
@@ -33,11 +33,11 @@ func (skv *ShardKV) unlockMu() {
 }
 
 func (skv *ShardKV) testLock(format string, a ...interface{}) {
-	quit := false
-	for !quit {
+	quit := 0
+	for quit != 1 {
 		select {
 		case <-skv.lockChan:
-			quit = true
+			quit = 1
 		case <-time.After(5 * time.Second):
 			skv.snapshot2DPrintf("ShardKV testLock(): "+format+"is not unlocked", a...)
 		}

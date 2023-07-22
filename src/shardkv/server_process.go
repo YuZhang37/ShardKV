@@ -2,6 +2,7 @@ package shardkv
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"sort"
 	"unsafe"
@@ -420,7 +421,8 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 		d.Decode(&finishedTransmit) != nil ||
 		d.Decode(&controllerSeqNum) != nil ||
 		d.Decode(&transmitNum) != nil {
-		log.Fatalf("Fatal: decoding error!\n")
+		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
+		log.Fatalf(prefix + "Fatal: decoding error!\n")
 	} else {
 		skv.config = config
 		skv.serveShardIDs = serveShardIDs
@@ -429,6 +431,9 @@ func (skv *ShardKV) decodeSnapshot(snapshot []byte) {
 		skv.futureServeConfigNums = futureServeConfigNums
 		skv.futureServeShards = futureServeShards
 		skv.shadowShardGroups = shadowShardGroups
+		for index := range skv.shadowShardGroups {
+			skv.shadowShardGroups[index].ProcessedBy = -1
+		}
 		skv.serveCachedReplies = serveCachedReplies
 		skv.receivingCachedReplies = receivingCachedReplies
 		skv.futureCachedReplies = futureCachedReplies

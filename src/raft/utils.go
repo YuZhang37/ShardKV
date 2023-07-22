@@ -45,7 +45,7 @@ const DebugSnapshot = false
 const DebugApplyCommand = false
 const DebugTemp = false
 const DebugSnapshot2 = false
-const DebugKVStore = false
+const DebugKVStore = true
 const DebugCommitNoop = false
 const DebugShardController = false
 const DebugShardKV = true
@@ -69,11 +69,11 @@ func (rf *Raft) unlockMu() {
 }
 
 func (rf *Raft) testLock(format string, a ...interface{}) {
-	quit := false
-	for !quit {
+	quit := 0
+	for quit != 1 {
 		select {
 		case <-rf.lockChan:
-			quit = true
+			quit = 1
 		case <-time.After(5 * time.Second):
 			rf.snapshotDPrintf("Raft testLock(): "+format+"is not unlocked", a...)
 		}
@@ -209,9 +209,9 @@ func (rf *Raft) logRaftState(msg string) {
 	rf.appliedLock.Lock()
 	lastApplied := rf.lastApplied
 	rf.appliedLock.Unlock()
-	log.Printf("%v:\n rf.me: %v, rf.role: %v, rf.appliedIndex: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, logsize: %v, first log entry: %v, last log entry: %v\n", msg, rf.me, rf.role, lastApplied, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), firstEntry, lastEntry)
+	log.Printf("%v:\n rf.gid: %v, rf.me: %v, rf.role: %v, rf.appliedIndex: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, logsize: %v, first log entry: %v, last log entry: %v\n", msg, rf.gid, rf.me, rf.role, lastApplied, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), firstEntry, lastEntry)
 }
 
 func (rf *Raft) logRaftState2(size int) {
-	KVStoreDPrintf("rf.me: %v, size of new log: %v, exceeds maxLogsize: %v rf.commitIndex: %v, rf.snapshotLstIndex: %v, will snapshot: %v\n", rf.me, size, rf.maxLogSize, rf.commitIndex, rf.snapshotLastIndex, rf.commitIndex > rf.snapshotLastIndex)
+	KVStoreDPrintf("rf.gid: %v, rf.me: %v, size of new log: %v, exceeds maxLogsize: %v rf.commitIndex: %v, rf.snapshotLstIndex: %v, will snapshot: %v\n", rf.gid, rf.me, size, rf.maxLogSize, rf.commitIndex, rf.snapshotLastIndex, rf.commitIndex > rf.snapshotLastIndex)
 }

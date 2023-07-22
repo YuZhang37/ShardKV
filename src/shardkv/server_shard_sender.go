@@ -31,20 +31,17 @@ when processing ACK,
 send ACK requests
 */
 
-func (skv *ShardKV) transmitToGroup(index int) {
-	skv.lockMu("transmitToGroup() with index: %v\n", index)
-	if index >= len(skv.shadowShardGroups) {
-		skv.unlockMu()
-		return
+func (skv *ShardKV) transmitToGroup(group ShadowShardGroup) {
+	skv.lockMu("transmitToGroup() with group: %v\n", group)
+	threadId := group.ProcessedBy
+	var isMatchedId bool
+	if threadId == -1 {
+		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, removeShardFromShadow() with group: %v.", skv.gid, skv.me, group)
+		log.Fatalf(prefix+"Fatal: expecting group id %v not to be -1\n", threadId)
 	}
-	if skv.shadowShardGroups[index].Processing {
-		skv.unlockMu()
-		return
-	}
-	skv.shadowShardGroups[index].Processing = true
-	group := skv.shadowShardGroups[index]
+	skv.transmitSenderDPrintf("transmitToGroup() receives valid group: %v\n, skv.shardowShardGroups: %v\n", group, skv.shadowShardGroups)
 	skv.unlockMu()
-	skv.transmitSenderDPrintf("transmitToGroup() receives group: %v\n", group)
+
 	// no currency on read/write a group
 	var servers []*labrpc.ClientEnd
 	for si := 0; si < len(group.Servernames); si++ {
@@ -91,7 +88,10 @@ func (skv *ShardKV) transmitToGroup(index int) {
 			skv.sendRequestToServers(args, servers)
 		}
 		skv.transmitSenderDPrintf("transmitToGroup() finishes shard: %v in group of GID: %v\n", shard, group.TargetGID)
-		group = skv.removeShardFromShadow(group.TargetGID, shard)
+		group, isMatchedId = skv.removeShardFromShadow(group.TargetGID, shard, threadId)
+		if !isMatchedId {
+			skv.transmitSenderDPrintf("transmitToGroup() exists with not matched process id. shardKV: shard: %v, transmitNum: %v, configNum: %v, shardChunks: %v len(group.ShardIDs): %v,\n group: %v\n", shard, transmitNum, configNum, shardChunks, len(group.ShardIDs), group)
+		}
 		skv.transmitSenderDPrintf("transmitToGroup() finishes shardKV: shard: %v, transmitNum: %v, configNum: %v, shardChunks: %v len(group.ShardIDs): %v,\n group: %v\n", shard, transmitNum, configNum, shardChunks, len(group.ShardIDs), group)
 		skv.mu.Lock()
 		skv.printState(fmt.Sprintf("after transmitToGroup() finishes shard: %v", shard))
@@ -132,7 +132,7 @@ func (skv *ShardKV) sendRequestToServers(args *TransmitShardArgs, servers []*lab
 	skv.transmitSenderDPrintf("sendRequestToServers() finishes with reply: %v\n", reply)
 }
 
-func (skv *ShardKV) removeShardFromShadow(targetGID int, shard int) ShadowShardGroup {
+func (skv *ShardKV) removeShardFromShadow(targetGID int, shard int, threadId int64) (ShadowShardGroup, bool) {
 	skv.transmitSenderDPrintf("removeShardFromShadow() receives targetGID: %v, shard: %v\n", targetGID, shard)
 	skv.lockMu("removeShardFromShadow() with targetGID: %v, shard: %v\n", targetGID, shard)
 	defer skv.unlockMu()
@@ -146,16 +146,22 @@ func (skv *ShardKV) removeShardFromShadow(targetGID int, shard int) ShadowShardG
 			break
 		}
 	}
+	prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, removeShardFromShadow() with targetID: %v, shard: %v ", skv.gid, skv.me, targetGID, shard)
 	if !found {
-		log.Fatalf("Fatal: remove shard %v from group %v error: not found group\n", shard, targetGID)
+		log.Printf(prefix+"Fatal: remove shard %v from group %v: not found group\n", shard, targetGID)
+		return ShadowShardGroup{}, false
+	}
+
+	if group.ProcessedBy != threadId {
+		return ShadowShardGroup{}, false
 	}
 
 	skv.transmitSenderDPrintf("removeShardFromShadow() before removing group: %v\n", group)
 	if len(group.ShardIDs) == 0 {
-		log.Fatalf("Fatal: remove shard %v from group %v error: len(group.Shards) == 0\n", shard, targetGID)
+		log.Fatalf(prefix+"Fatal: remove shard %v from group %v error: len(group.Shards) == 0\n", shard, targetGID)
 	}
 	if group.ShardIDs[0] != shard {
-		log.Fatalf("Fatal: remove shard %v from group %v error: group.Shards[0]: %v != command.Shard\n", shard, targetGID, group.ShardIDs[0])
+		log.Fatalf(prefix+"Fatal: remove shard %v from group %v error: group.Shards[0]: %v != command.Shard\n", shard, targetGID, group.ShardIDs[0])
 	}
 	group.ShardIDs = group.ShardIDs[1:]
 	group.TransmitNums = group.TransmitNums[1:]
@@ -171,5 +177,5 @@ func (skv *ShardKV) removeShardFromShadow(targetGID int, shard int) ShadowShardG
 		skv.shadowShardGroups = newGroups
 	}
 	skv.transmitSenderDPrintf("removeShardFromShadow() finishes targetGID: %v, shard: %v\n group: %v\n returnedGroup: %v\n skv.shardowShardGroups: %v", targetGID, shard, group, returnedGroup, skv.shadowShardGroups)
-	return returnedGroup
+	return returnedGroup, true
 }

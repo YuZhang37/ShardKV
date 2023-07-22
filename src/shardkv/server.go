@@ -48,7 +48,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	skv := new(ShardKV)
 	skv.me = me
 	skv.leaderId = -1
-	if maxRaftState != -1 {
+	if maxRaftState >= 0 {
 		maxRaftState = 8 * maxRaftState
 	}
 	skv.maxRaftState = maxRaftState
@@ -280,14 +280,22 @@ func (skv *ShardKV) processCommand(commandIndex int, commandTerm int, commandFro
 	skv.lockMu("processCommand() with commandIndex: %v, commandTerm: %v, commandFromRaft: %v\n", commandIndex, commandTerm, commandFromRaft)
 	defer skv.unlockMu()
 
+	prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, processCommand() with commandIndex: %v, commandTerm: %v, commandFromRaft: %v, ", skv.gid, skv.me, commandIndex, commandTerm, commandFromRaft)
+
+	if commandIndex <= skv.latestAppliedIndex {
+		// this case happens only in the followers when a latest snapshot was just installed, and an outdated command is executed
+		// drop the command
+		skv.tempDPrintf("processCommand() drops the command. with commandIndex: %v, commandTerm: %v, commandFromRaft: %v, ", commandIndex, commandTerm, commandFromRaft)
+		return
+	}
 	// check command index and term
 	if commandIndex != skv.latestAppliedIndex+1 {
-		log.Fatalf("Fatal: ShardKV: %v, expecting log index: %v, got %v", skv.me, skv.latestAppliedIndex+1, commandIndex)
+		log.Fatalf(prefix+"Fatal: ShardKV: %v, expecting log index: %v, got %v", skv.me, skv.latestAppliedIndex+1, commandIndex)
 	} else {
 		skv.latestAppliedIndex++
 	}
 	if commandTerm < skv.latestAppliedTerm {
-		log.Fatalf("Fatal: ShardKV: %v, expecting log term: >=%v, got %v", skv.me, skv.latestAppliedTerm, commandTerm)
+		log.Fatalf(prefix+"Fatal: ShardKV: %v, expecting log term: >=%v, got %v", skv.me, skv.latestAppliedTerm, commandTerm)
 	} else {
 		skv.latestAppliedTerm = commandTerm
 	}
@@ -551,7 +559,8 @@ func (skv *ShardKV) configChecker() {
 			}
 			skv.unlockMu()
 			if unsafe.Sizeof(command) >= MAXKVCOMMANDSIZE {
-				log.Fatalf("Fatal: command is too large, max allowed command size is %v\n", MAXKVCOMMANDSIZE)
+				prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, configChecker() with command: %v ", skv.gid, skv.me, command)
+				log.Fatalf(prefix+"Fatal: command is too large, max allowed command size is %v\n", MAXKVCOMMANDSIZE)
 			}
 			skv.tempDPrintf("configChecker for newConfig: %v and issues ConfigUpdateCommand: %v\n", newConfig, command)
 			skv.startCommit(command)
@@ -572,9 +581,10 @@ func (skv *ShardKV) shadowShardInspector() {
 		time.Sleep(time.Duration(INSPECTSHADOWTIMEOUT) * time.Millisecond)
 		skv.lockMu("shadowShardInspector()\n")
 		for index := range skv.shadowShardGroups {
-			if !skv.shadowShardGroups[index].Processing {
+			if skv.shadowShardGroups[index].ProcessedBy == -1 {
 				skv.moveShardDPrintf("shadowShardInspector gets a shardGroup with no thread processing: %v\n", skv.shadowShardGroups[index])
-				go skv.transmitToGroup(index)
+				skv.shadowShardGroups[index].ProcessedBy = nrand()
+				go skv.transmitToGroup(skv.shadowShardGroups[index])
 			}
 		}
 

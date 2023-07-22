@@ -70,7 +70,12 @@ type ShadowShardGroup struct {
 	ShardIDs     []int
 	TransmitNums []int
 	ConfigNums   []int
-	Processing   bool
+	/*
+		the thread processing the group is assigned a unique number
+		initialized to be -1, when the thread needs to update this group, it needs to compare its id with this field, if it's not identical, it means the group has been updated by a snapshot. Stop the sending thread.
+		When decoding, this field needs to be reset to -1.
+	*/
+	ProcessedBy int64
 
 	// when a shard finishes the move, issue a new command to remove that shard from shadowShards
 	// pitfall: the server may sending this shard when this shard is moved, the send thread needs to check if the shard still exists, if not, stop sending and treat it as the sending is finished and remove the shard from group
