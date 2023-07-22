@@ -13,6 +13,7 @@ const TransmitHandlerDebug = true
 const SnapshotDebug = true
 const FollowerDebug = false
 const Temp2Debug = true
+const TestDebug = true
 
 const WatchLock = true
 
@@ -52,6 +53,41 @@ func (skv *ShardKV) snapshot2DPrintf(format string, a ...interface{}) (n int, er
 		}
 	}
 	return
+}
+
+func (skv *ShardKV) printStateForTest(msg string) {
+	if TestDebug {
+		fmt.Printf(msg+`
+		Group: %v, \n
+		ShardKVServer: %v, \n
+		skv.serveShardIDs: %v,\n
+		skv.serveShards: %v,\n
+		skv.receivingShards: %v,\n
+		skv.futureServeConfigNums: %v,\n
+		skv.shadowShardGroups: %v,\n
+		skv.serveCachedReplies: %v,\n
+		skv.receivingCachedReplies: %v,\n
+		skv.futureCachedReplies: %v,\n
+		skv.finishedTransmit: %v,\n
+		skv.config: %v,\n
+		skv.transmitNum: %v,\n
+		`,
+			skv.gid,
+			skv.me,
+			skv.serveShardIDs,
+			skv.serveShards,
+			skv.receivingShards,
+			skv.futureServeConfigNums,
+			skv.shadowShardGroups,
+			skv.serveCachedReplies,
+			skv.receivingCachedReplies,
+			skv.futureCachedReplies,
+			skv.finishedTransmit,
+			skv.config,
+			skv.transmitNum,
+		)
+	}
+
 }
 
 func (skv *ShardKV) printState(msg string) {

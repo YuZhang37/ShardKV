@@ -1,6 +1,7 @@
 package shardkv
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -36,6 +37,11 @@ func (skv *ShardKV) transmitToGroup(index int) {
 		skv.unlockMu()
 		return
 	}
+	if skv.shadowShardGroups[index].Processing {
+		skv.unlockMu()
+		return
+	}
+	skv.shadowShardGroups[index].Processing = true
 	group := skv.shadowShardGroups[index]
 	skv.unlockMu()
 	skv.transmitSenderDPrintf("transmitToGroup() receives group: %v\n", group)
@@ -87,9 +93,14 @@ func (skv *ShardKV) transmitToGroup(index int) {
 		skv.transmitSenderDPrintf("transmitToGroup() finishes shard: %v in group of GID: %v\n", shard, group.TargetGID)
 		group = skv.removeShardFromShadow(group.TargetGID, shard)
 		skv.transmitSenderDPrintf("transmitToGroup() finishes shardKV: shard: %v, transmitNum: %v, configNum: %v, shardChunks: %v len(group.ShardIDs): %v,\n group: %v\n", shard, transmitNum, configNum, shardChunks, len(group.ShardIDs), group)
-
+		skv.mu.Lock()
+		skv.printState(fmt.Sprintf("after transmitToGroup() finishes shard: %v", shard))
+		skv.mu.Unlock()
 	}
 	skv.transmitSenderDPrintf("transmitToGroup() quit with group: %v\n skv.killed(): %v", group, skv.killed())
+	skv.mu.Lock()
+	skv.printState(fmt.Sprintf("after transmitToGroup() finishes group: %v", group))
+	skv.mu.Unlock()
 
 }
 

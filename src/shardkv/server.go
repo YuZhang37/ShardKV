@@ -576,7 +576,6 @@ func (skv *ShardKV) shadowShardInspector() {
 				skv.moveShardDPrintf("shadowShardInspector gets a shardGroup with no thread processing: %v\n", skv.shadowShardGroups[index])
 				go skv.transmitToGroup(index)
 			}
-			skv.shadowShardGroups[index].Processing = true
 		}
 
 		if skv.killed() {
