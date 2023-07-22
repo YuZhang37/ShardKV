@@ -245,6 +245,7 @@ func (skv *ShardKV) moveShardToShadow(shard int, sourceShards map[int][]ChunkKVS
 		servernames = append(servernames, skv.config.Groups[targetGID]...)
 		newGroup := ShadowShardGroup{
 			TargetGID:           targetGID,
+			ProcessedBy:         -1,
 			Servernames:         servernames,
 			ShardIDs:            make([]int, 0),
 			TransmitNums:        make([]int, 0),

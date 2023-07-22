@@ -571,7 +571,7 @@ func TestConcurrent02(t *testing.T) {
 	va := make([]string, n)
 	for i := 0; i < n; i++ {
 		ka[i] = strconv.Itoa(i) // ensure multiple shards
-		va[i] = randstring(1)
+		va[i] = "-" + randstring(10)
 		ck.Put(ka[i], va[i])
 	}
 
@@ -585,7 +585,7 @@ func TestConcurrent02(t *testing.T) {
 			x := "-" + randstring(10)
 			ck1.Append(ka[i], x)
 			va[i] += x
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
@@ -726,9 +726,10 @@ func TestConcurrent3(t *testing.T) {
 	ff := func(i int, ck1 *Clerk) {
 		defer func() { ch <- true }()
 		for atomic.LoadInt32(&done) == 0 {
-			x := randstring(1)
+			x := "-" + randstring(10)
 			ck1.Append(ka[i], x)
 			va[i] += x
+			time.Sleep(10 * time.Millisecond)
 		}
 	}
 
