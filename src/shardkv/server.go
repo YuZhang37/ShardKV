@@ -497,9 +497,10 @@ func (skv *ShardKV) snapshotController() {
 	quit := false
 	for !quit {
 		select {
+		// lastApplied is just 1
 		case lastApplied := <-skv.rf.SignalSnapshot:
 			skv.tempDPrintf("snapshotController() received lastApplied for snapshot: %v\n", lastApplied)
-			skv.waitCommandApplied(lastApplied)
+			// skv.waitCommandApplied(lastApplied)
 			skv.lockMu("snapshotController() with lastApplied: %v\n", lastApplied)
 			data := skv.encodeSnapshot()
 			snapshot := raft.SnapshotInfo{
@@ -528,15 +529,15 @@ func (skv *ShardKV) snapshotController() {
 	}
 }
 
-func (skv *ShardKV) waitCommandApplied(lastApplied int) {
-	for {
-		latestApplied := skv.getLatestApplied()
-		if latestApplied >= lastApplied {
-			return
-		}
-		time.Sleep(time.Duration(CHECKAPPLIEDTIMEOUT) * time.Millisecond)
-	}
-}
+// func (skv *ShardKV) waitCommandApplied(lastApplied int) {
+// 	for {
+// 		latestApplied := skv.getLatestApplied()
+// 		if latestApplied >= lastApplied {
+// 			return
+// 		}
+// 		time.Sleep(time.Duration(CHECKAPPLIEDTIMEOUT) * time.Millisecond)
+// 	}
+// }
 
 /*
 every CHECKCONFIGTIMEOUT, this thread issues a Query(-1)

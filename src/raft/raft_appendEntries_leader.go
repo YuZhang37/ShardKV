@@ -171,7 +171,7 @@ func (rf *Raft) harvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 		hasHigherIndex := rf.latestIssuedEntryIndices[reply.Server] > reply.IssueEntryIndex
 		isLeader := rf.role == LEADER
 
-		if reply.Success || reply.HigherTerm || hasHigherIndex || rf.killed() || !isLeader {
+		if (reply.Success && reply.LastAppendedIndex >= issuedIndex) || reply.HigherTerm || hasHigherIndex || rf.killed() || !isLeader {
 			rf.unlockMu()
 			rf.appendEntriesDPrintf("harvestAppendEntriesReply(): reply from server %v: %v waiting for sending", reply.Server, reply)
 			select {
@@ -194,6 +194,9 @@ func (rf *Raft) harvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 			// need to change nextIndices[server] if mismatched
 			if reply.MisMatched {
 				rf.updateNextIndicesOnMisMatch(reply)
+			}
+			if rf.nextIndices[reply.Server] < reply.LastAppendedIndex {
+				rf.nextIndices[reply.Server] = reply.LastAppendedIndex + 1
 			}
 			if rf.nextIndices[reply.Server] <= rf.snapshotLastIndex {
 				go rf.SendAndHarvestSnapshot(reply.Server)

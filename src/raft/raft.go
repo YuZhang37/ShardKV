@@ -144,18 +144,19 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		rf.logRaftState("Start(): from leader before signalSnapshot +0")
 		rf.logRaftState2(size)
 		if rf.commitIndex > rf.snapshotLastIndex {
-			// there are log entries to compact
+			// there are log entries to apply
 			rf.snapshotDPrintf("Start(): calls insideApplyCommand...")
 			rf.insideApplyCommand(rf.commitIndex, true)
 			rf.snapshotDPrintf("Start(): finishes insideApplyCommand...")
-			rf.snapshotDPrintf("Start(): calls signalSnapshot...")
-			rf.signalSnapshot()
-			rf.snapshotDPrintf("Start(): finishes signalSnapshot...")
-			rf.persistState("Start(): snapshots for entry %v", entry)
-			rf.logRaftState("Start(): from leader after signalSnapshot +0")
-			newLog = append(rf.log, entry)
-			size = rf.getLogSize(newLog)
 		}
+		// it's possible some log entries have been applied, but not be taken snapshot
+		rf.snapshotDPrintf("Start(): calls signalSnapshot...")
+		rf.signalSnapshot()
+		rf.snapshotDPrintf("Start(): finishes signalSnapshot...")
+		rf.persistState("Start(): snapshots for entry %v", entry)
+		rf.logRaftState("Start(): from leader after signalSnapshot +0")
+		newLog = append(rf.log, entry)
+		size = rf.getLogSize(newLog)
 		if size >= rf.maxLogSize {
 			index = -1
 			term = -1
@@ -168,17 +169,17 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		rf.logRaftState2(size)
 		if len(rf.log) > 0 {
 			if rf.commitIndex > rf.snapshotLastIndex {
-				// there are log entries to compact
+				// there are log entries to apply
 				rf.snapshotDPrintf("Start(): calls insideApplyCommand...")
 				rf.insideApplyCommand(rf.commitIndex, true)
 				rf.snapshotDPrintf("Start(): finishes insideApplyCommand...")
-				rf.snapshotDPrintf("Start(): calls signalSnapshot...")
-				rf.signalSnapshot()
-				rf.snapshotDPrintf("SStart(): finishes signalSnapshot...")
-				rf.persistState("Start(): snapshots for entry %v", entry)
-				rf.logRaftState("from leader: after signalSnapshot -2")
-				newLog = append(rf.log, entry)
 			}
+			rf.snapshotDPrintf("Start(): calls signalSnapshot...")
+			rf.signalSnapshot()
+			rf.snapshotDPrintf("SStart(): finishes signalSnapshot...")
+			rf.persistState("Start(): snapshots for entry %v", entry)
+			rf.logRaftState("from leader: after signalSnapshot -2")
+			newLog = append(rf.log, entry)
 			if len(rf.log) > 0 {
 				index = -1
 				term = -1

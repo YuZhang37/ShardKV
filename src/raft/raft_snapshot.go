@@ -32,7 +32,7 @@ func (rf *Raft) insideSnapshot(lastIncludedIndex int, snapshot []byte) int {
 	rf.snapshot2DPrintf("insideSnapshot(called with lastIncludedIndex %v,\n", lastIncludedIndex)
 
 	// lastIncludedIndex can be <= 0, if the command has been sent to the application but has been applied when taking the snapshot
-	if lastIncludedIndex <= 0 || lastIncludedIndex > rf.commitIndex {
+	if lastIncludedIndex > rf.commitIndex {
 		rf.logFatal("insideSnapshot(): Raft Snapshot Error: rf.gid: %v, rf.me: %v, rf.role: %v, lastIncludedIndex %v, commitIndex: %v\n", rf.gid, rf.me, rf.role, lastIncludedIndex, rf.commitIndex)
 	}
 	/*
