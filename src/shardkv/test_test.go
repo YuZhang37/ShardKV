@@ -1077,7 +1077,7 @@ func TestChallenge1Delete(t *testing.T) {
 		for i := 0; i < cfg.n; i++ {
 			cfg.groups[gi].servers[i].lockMu("Test snapshot")
 			snapshot := cfg.groups[gi].servers[i].encodeSnapshot()
-			lastIndex := cfg.groups[gi].servers[i].latestAppliedIndex
+			lastIndex := cfg.groups[gi].servers[i].getLatestApplied()
 			cfg.groups[gi].servers[i].unlockMu()
 			cfg.groups[gi].servers[i].rf.Snapshot(lastIndex, snapshot)
 			raft := cfg.groups[gi].saved[i].RaftStateSize()

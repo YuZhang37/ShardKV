@@ -32,12 +32,11 @@ send ACK requests
 */
 
 func (skv *ShardKV) transmitToGroup(group ShadowShardGroup) {
-	skv.lockMu("transmitToGroup() with group: %v\n", group)
+	skv.lockMu("transmitToGroup() 1 with group: %v\n", group)
 	threadId := group.ProcessedBy
 	var isMatchedId bool
 	if threadId == -1 {
-		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, removeShardFromShadow() with group: %v.", skv.gid, skv.me, group)
-		log.Fatalf(prefix+"Fatal: expecting group id %v not to be -1\n", threadId)
+		skv.logFatal("transmitToGroup() with group: %v, expecting group id %v not to be -1\n", group, threadId)
 	}
 	skv.transmitSenderDPrintf("transmitToGroup() receives valid group: %v\n, skv.shardowShardGroups: %v\n", group, skv.shadowShardGroups)
 	skv.unlockMu()
@@ -93,14 +92,14 @@ func (skv *ShardKV) transmitToGroup(group ShadowShardGroup) {
 			skv.transmitSenderDPrintf("transmitToGroup() exists with not matched process id. shardKV: shard: %v, transmitNum: %v, configNum: %v, shardChunks: %v len(group.ShardIDs): %v,\n group: %v\n", shard, transmitNum, configNum, shardChunks, len(group.ShardIDs), group)
 		}
 		skv.transmitSenderDPrintf("transmitToGroup() finishes shardKV: shard: %v, transmitNum: %v, configNum: %v, shardChunks: %v len(group.ShardIDs): %v,\n group: %v\n", shard, transmitNum, configNum, shardChunks, len(group.ShardIDs), group)
-		skv.mu.Lock()
+		skv.lockMu("2 transmitToGroup() with group: %v", group)
 		skv.printState(fmt.Sprintf("after transmitToGroup() finishes shard: %v", shard))
-		skv.mu.Unlock()
+		skv.unlockMu()
 	}
 	skv.transmitSenderDPrintf("transmitToGroup() quit with group: %v\n skv.killed(): %v", group, skv.killed())
-	skv.mu.Lock()
+	skv.lockMu("3 transmitToGroup() with group: %v", group)
 	skv.printState(fmt.Sprintf("after transmitToGroup() finishes group: %v", group))
-	skv.mu.Unlock()
+	skv.unlockMu()
 
 }
 
@@ -122,7 +121,7 @@ func (skv *ShardKV) sendRequestToServers(args *TransmitShardArgs, servers []*lab
 				break
 			}
 			if tempReply.SizeExceeded {
-				log.Fatalf("Transmit chunk is too large, max allowed chunk size is %v\n", MAXSHARDCHUNKSIZE)
+				skv.logFatal("Transmit chunk is too large, max allowed chunk size is %v\n", MAXSHARDCHUNKSIZE)
 			}
 			// not the leader
 			skv.transmitSenderDPrintf("sendRequestToServers() not the leader")

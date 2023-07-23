@@ -51,13 +51,13 @@ func nrand() int64 {
 // Config.Groups[gid][i] into a labrpc.ClientEnd on which you can
 // send RPCs.
 func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.ClientEnd) *Clerk {
-	TempDPrintf("MakeClerk is called()\n")
+	TempDPrintf("MakeClerk() is called()\n")
 	ck := new(Clerk)
 	ck.clerkId = nrand()
 	ck.seqNum = 1
 	ck.sc = shardController.MakeClerk(ctrlers)
 	ck.make_end = make_end
-	TempDPrintf("MakeClerk finished with ck: %v\n", ck)
+	TempDPrintf("MakeClerk() finished with ck: %v\n", ck)
 	return ck
 }
 
@@ -117,7 +117,7 @@ func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
 			quit = true
 		case <-time.After(1 * time.Second):
 			ck.mu.Lock()
-			TempDPrintf("clerk's request hasn't finished for args: %v", args)
+			TempDPrintf("sendRequest() clerk's request hasn't finished for args: %v", args)
 			ck.mu.Unlock()
 		}
 	}
@@ -129,7 +129,7 @@ This function sends request to kvServer, and handles retries
 The ConfigNum is not set in the request, since it may need to query the controller and change
 */
 func (ck *Clerk) sendRequestWithChan(args *RequestArgs, replyChan chan RequestReply) {
-	TempDPrintf("Clerk: %v, sendRequestWithChan() is called with %v\n", ck.clerkId, args)
+	TempDPrintf("sendRequestWithChan() Clerk: %v is called with %v\n", ck.clerkId, args)
 	for ck.config.Num == 0 {
 		// init config
 		ck.config = ck.sc.Query(-1)
@@ -151,22 +151,22 @@ func (ck *Clerk) sendRequestWithChan(args *RequestArgs, replyChan chan RequestRe
 				servers = append(servers, srv)
 			}
 		} else {
-			log.Fatalf("Clerk Config %v doesn't have gid: %v\n", ck.config, gid)
+			log.Fatalf("sendRequestWithChan() Clerk Config %v doesn't have gid: %v\n", ck.config, gid)
 		}
 
-		TempDPrintf("sendToServers() sends to group: %v, receives args: %v with config: %v\n", gid, args, ck.config)
+		TempDPrintf("sendRequestWithChan() sends to group: %v, receives args: %v with config: %v\n", gid, args, ck.config)
 		reply = ck.sendToServers(args, servers)
 		if !reply.Succeeded {
 			// ask controler for the latest configuration.
 			ck.config = ck.sc.Query(-1)
-			TempDPrintf("Args: %v, sends to the wrong group: %v, get reply: %v, new config: %v\n", args, gid, reply, ck.config)
+			TempDPrintf("sendRequestWithChan() Args: %v, sends to the wrong group: %v, get reply: %v, new config: %v\n", args, gid, reply, ck.config)
 		} else {
 			// Succeeded
 			quit = true
 		}
 
 	}
-	TempDPrintf("Clerk: %v, sendRequestWithChan() finished with %v for args: %v\n", ck.clerkId, reply, args)
+	TempDPrintf("sendRequestWithChan() Clerk: %v, finished with %v for args: %v\n", ck.clerkId, reply, args)
 	replyChan <- reply
 }
 
@@ -201,7 +201,7 @@ func (ck *Clerk) sendToServers(args *RequestArgs, servers []*labrpc.ClientEnd) R
 			// contact a non-leader server
 			// or a leader server with size too large
 			if tempReply.SizeExceeded {
-				log.Fatalf("command is too large, max allowed command size is %v\n", MAXKVCOMMANDSIZE)
+				log.Fatalf("sendToServers() with args: %v, command is too large, max allowed command size is %v\n", args, MAXKVCOMMANDSIZE)
 			}
 			TempDPrintf("sendToServers() sent to leader %v, got tempReply: %v for args: %v not successful\n", server, tempReply, args)
 			server = mathRand.Intn(len(servers))

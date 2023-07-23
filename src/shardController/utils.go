@@ -35,20 +35,13 @@ func (sc *ShardController) testLock(format string, a ...interface{}) {
 		case <-sc.lockChan:
 			quit = true
 		case <-time.After(5 * time.Second):
-			sc.snapshot2DPrintf("ShardController testLock(): "+format+"is not unlocked", a...)
+			votedFor := int(sc.rf.GetVotedFor())
+			prefix := fmt.Sprintf("ShardController: %v, ", sc.me)
+			if votedFor == sc.me || FollowerDebug {
+				log.Printf(prefix+"MuLock: ShardController testLock(): "+format+"is not unlocked", a...)
+			}
 		}
 	}
-}
-
-func (sc *ShardController) snapshot2DPrintf(format string, a ...interface{}) (n int, err error) {
-	if SnapshotDebug {
-		votedFor := int(sc.rf.GetVotedFor())
-		prefix := fmt.Sprintf("ShardController: %v, ", sc.me)
-		if votedFor == sc.me || FollowerDebug {
-			log.Printf(prefix+format, a...)
-		}
-	}
-	return
 }
 
 func TempDPrintf(format string, a ...interface{}) (n int, err error) {

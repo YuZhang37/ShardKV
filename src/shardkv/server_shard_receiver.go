@@ -60,7 +60,7 @@ func (skv *ShardKV) fillReply(args *TransmitShardArgs, reply *TransmitShardReply
 func (skv *ShardKV) checkLeaderForTransmit(args *TransmitShardArgs, reply *TransmitShardReply) bool {
 	votedFor := skv.rf.GetVotedFor()
 	if votedFor != skv.me {
-		TempDPrintf("ShardKV: %v is not the leader. votedFor: %v\n", skv.me, votedFor)
+		skv.tempDPrintf("checkLeaderForTransmit(): Not the leader: skv.me: %v, votedFor: %v, args: %v\n", skv.me, votedFor, args)
 		return false
 	}
 	return true
@@ -164,7 +164,7 @@ func (skv *ShardKV) waitCommitted(args *TransmitShardArgs) bool {
 		}
 		skv.lockMu("waitCommitted() with args: %v\n", args)
 		transmit, exists := skv.finishedTransmit[args.FromGID]
-		skv.transmitHandlerDPrintf("waitCommitted() gets transmit for FromGID %v, TransmitNum %v: %v, %v\n", args.FromGID, args.TransmitNum, transmit, exists)
+		skv.transmitHandlerDPrintf("waitCommitted() gets transmit for FromGID %v, TransmitNum %v: transmit: %v, exists: %v, TransmitShardArgs: %v\n", args.FromGID, args.TransmitNum, transmit, exists, args)
 		if exists {
 			if transmit.TransmitNum > args.TransmitNum {
 				skv.unlockMu()

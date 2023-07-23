@@ -46,6 +46,7 @@ const (
 	CHECKCONFIGTIMEOUT    = 50
 	INSPECTSHADOWTIMEOUT  = 50
 	RETRYTRANSMITTIMEOUT  = 100
+	CHECKAPPLIEDTIMEOUT   = 2
 )
 
 type Clerk struct {
@@ -121,7 +122,8 @@ type ShardKV struct {
 	transmitNum int
 
 	// shard -> mutex
-	shardLocks [shardController.NShards]sync.Mutex
+	shardLocks     [shardController.NShards]sync.Mutex
+	shardLockChans [shardController.NShards]chan int
 	// command is executed one by one, no need for multiple locks for commandExecutor
 	// useful for RequestHandler to handle multiple requests for different shards the same time, for checking cachedReply
 
@@ -158,7 +160,7 @@ type ShardKV struct {
 		Atomically
 	*/
 
-	latestAppliedIndex int
+	latestAppliedIndex int32
 	latestAppliedTerm  int
 
 	// send gid -> transmitNumber, need to be persisted
