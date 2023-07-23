@@ -1,5 +1,7 @@
 package raft
 
+import "fmt"
+
 /*
 follower or candidate server will execute this function for heartbeat or appendEntries,
 for heartbeat: args.IssueEntryIndex is -1 and no entries
@@ -138,6 +140,15 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 		rf.log = rf.log[:i]
 	}
 
+	// update commit index here
+	if len(rf.log) > 0 {
+		if rf.log[len(rf.log)-1].Index <= args.LeaderCommitIndex {
+			rf.logRaftStateForInstallSnapshot(fmt.Sprintf("here appendNewEntriesFromArgs() with args: %v", args))
+			rf.commitIndex = rf.log[len(rf.log)-1].Index
+			rf.debugInstallSnapshot("rf.commitIndex: %v, rf.log[len(rf.log)-1].Index: %v\n", rf.commitIndex, rf.log[len(rf.log)-1].Index)
+		}
+	}
+
 	for ; j < len(args.Entries); j++ {
 		// append new log entries to the server's log
 		entry := args.Entries[j]
@@ -160,14 +171,14 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 			if size >= rf.maxLogSize {
 				// snapshot enabled and size still exceeds the limit after taking the snapshot
 				// stop appending
+				msg := fmt.Sprintf("AppendNewEntriesFromArgs() appends up to entry(not appended): %v with args: %v\n", entry, args)
+				rf.logRaftStateForInstallSnapshot(msg)
 				break
 			}
 		}
-
 		if !isNoop && rf.maxLogSize == -2 {
 			// must apply the command first and take a snapshot if there is log entry
 			rf.logRaftState("from follower: before signalSnapshot")
-			rf.logRaftState2(size)
 			if len(rf.log) > 0 {
 				if rf.commitIndex > rf.snapshotLastIndex {
 					// there are log entries to compact, compact them
@@ -178,6 +189,8 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 					rf.logRaftState("from leader: after signalSnapshot")
 				}
 				if len(rf.log) > 0 {
+					msg := fmt.Sprintf("AppendNewEntriesFromArgs() appends up to entry(not appended): %v with args: %v\n", entry, args)
+					rf.logRaftStateForInstallSnapshot(msg)
 					break
 				}
 			}
@@ -196,6 +209,7 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 
 	}
 	reply.LastAppendedIndex = rf.currentAppended
+	rf.logRaftStateForInstallSnapshot(fmt.Sprintf("follower appends entries: %v, rf.currentAppended: %v", args, rf.currentAppended))
 }
 
 func (rf *Raft) updateCommitIndexOnReceivingAppendEntries(args *AppendEntriesArgs) {

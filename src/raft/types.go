@@ -232,6 +232,7 @@ type Raft struct {
 	// ordered command delivery
 	// lock across channel, may held for long, don't try to use this lock inside rf.mu
 	appliedLock         sync.Mutex
+	appliedLockChan     chan int
 	orderedDeliveryChan chan ApplyMsg
 	pendingMsg          map[int]ApplyMsg
 }

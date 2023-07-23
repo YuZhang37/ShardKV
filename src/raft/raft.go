@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"fmt"
 	"log"
 	"unsafe"
 
@@ -50,6 +51,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	}
 	rf.commitIndex = 0
 	rf.lastApplied = 0
+	rf.appliedLockChan = nil
 
 	// persistent states
 	rf.currentTerm = 0
@@ -186,6 +188,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		}
 	}
 	rf.log = newLog
+	rf.logRaftStateForInstallSnapshot(fmt.Sprintf("leader appends entry: %v ", entry))
 	rf.persistState("server %v Start() appends entry %v", rf.me, entry)
 	AppendEntriesDPrintf("Command %v is appended on %v at index of %v\n", command, rf.me, len(rf.log))
 

@@ -132,7 +132,7 @@ func (rf *Raft) sendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 	AppendEntries2DPrintf(funct, "next index to %v is %v \n", server, next)
 	if next < 1 {
 		rf.unlockMu()
-		log.Fatalf("fatal: next index to %v is %v \n", server, next)
+		log.Fatalf("Fatal: rf.gid: %v, rf.me: %v, sendAppendEntries() with server %v, issueEntryIndex %v, next index to %v is %v \n", rf.gid, rf.me, server, issueEntryIndex, server, next)
 	}
 
 	if next <= rf.snapshotLastIndex {

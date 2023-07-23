@@ -1,10 +1,11 @@
 package raft
 
-// import "log"
+import "fmt"
 
 func (rf *Raft) ApplySnapshot() {
 
 	rf.lockMu("ApplySnapshot()")
+	rf.logRaftStateForInstallSnapshot("ApplySnapshot()")
 	Snapshot2DPrintf("server: %v, ApplySnapshot() is called with lastIncludedIndex: %v, lastIncludedTerm: %v\n", rf.me, rf.snapshotLastIndex, rf.snapshotLastTerm)
 	KVStoreDPrintf("server: %v, ApplySnapshot() is called with lastIncludedIndex: %v, lastIncludedTerm: %v\n", rf.me, rf.snapshotLastIndex, rf.snapshotLastTerm)
 	msg := ApplyMsg{
@@ -15,8 +16,8 @@ func (rf *Raft) ApplySnapshot() {
 	}
 	rf.unlockMu()
 
-	rf.appliedLock.Lock()
-	defer rf.appliedLock.Unlock()
+	rf.lockApplied("ApplySnapshot()")
+	defer rf.unlockApplied()
 	Snapshot2DPrintf("server: %v, lastApplied %v\n before applying", rf.me, rf.lastApplied)
 	if rf.lastApplied >= int32(msg.SnapshotIndex) {
 		return
@@ -46,10 +47,10 @@ func (rf *Raft) ApplyCommand(issuedIndex int) {
 locked indicates if this function is called within rf.mu lock
 */
 func (rf *Raft) insideApplyCommand(issuedIndex int, locked bool) {
-	KVStoreDPrintf("server: %v, ApplySnapshot() is called with issuedIndex: %v, locked: %v\n", rf.me, issuedIndex, locked)
-	rf.appliedLock.Lock()
+	rf.lockApplied("1 insideApplyCommand() with issuedIndex: %v, locked: %v", issuedIndex, locked)
 	nextAppliedIndex := int(rf.lastApplied + 1)
-	rf.appliedLock.Unlock()
+	KVStoreDPrintf("rf.gid: %v, rf.me: %v, insideApplyCommand() is called with issuedIndex: %v, locked: %v, nextAppliedIndex: %v\n", rf.gid, rf.me, issuedIndex, locked, nextAppliedIndex)
+	rf.unlockApplied()
 	for ; nextAppliedIndex <= issuedIndex; nextAppliedIndex++ {
 		// prepare msg
 		if !locked {
@@ -70,43 +71,48 @@ func (rf *Raft) insideApplyCommand(issuedIndex int, locked bool) {
 			CommandIndex: rf.log[indexInLiveLog].Index,
 			CommandTerm:  rf.log[indexInLiveLog].Term,
 		}
+		rf.logRaftStateForInstallSnapshot(fmt.Sprintf("insideApplyCommand(): msg: %v\n", msg))
 		if !locked {
 			rf.unlockMu()
 		}
-		rf.appliedLock.Lock()
+		rf.lockApplied("2 insideApplyCommand() with issuedIndex: %v, locked: %v", issuedIndex, locked)
 		if _, exists := rf.pendingMsg[msg.CommandIndex]; !exists {
 			Snapshot2DPrintf("server %v adds %v\n", rf.me, msg)
 			ApplyCommandDPrintf("server %v adds %v\n", rf.me, msg)
+			rf.debugInstallSnapshot("sends command to delivery: %v\n", msg)
 			rf.pendingMsg[msg.CommandIndex] = msg
 			go func() {
 				rf.orderedDeliveryChan <- ApplyMsg{}
 			}()
 		}
-		rf.appliedLock.Unlock()
+		rf.unlockApplied()
 	}
-	KVStoreDPrintf("server: %v, ApplySnapshot() is finished with issuedIndex: %v, locked: %v\n", rf.me, issuedIndex, locked)
+	KVStoreDPrintf("rf.gid: %v, rf.me: %v, insideApplyCommand() is finished with issuedIndex: %v, locked: %v\n", rf.gid, rf.me, issuedIndex, locked)
 }
 
 func (rf *Raft) OrderedCommandDelivery() {
-	ApplyCommandDPrintf("server: %v, OrderedCommandDelivery gets running....\n", rf.me)
+	ApplyCommandDPrintf("rf.gid: %v, rf.me: %v, OrderedCommandDelivery gets running....\n", rf.gid, rf.me)
 	for range rf.orderedDeliveryChan {
-		rf.appliedLock.Lock()
+		rf.lockApplied("OrderedCommandDelivery()")
 		nextApplied := int(rf.lastApplied + 1)
 		msg, exists := rf.pendingMsg[nextApplied]
-		ApplyCommandDPrintf("server: %v, msg: %v, exists: %v\n", rf.me, msg, exists)
-		ApplyCommandDPrintf("server: %v, pendingMsg: %v\n", rf.me, rf.pendingMsg)
+		ApplyCommandDPrintf("rf.gid: %v, rf.me: %v, msg: %v, exists: %v\n", rf.gid, rf.me, msg, exists)
+		ApplyCommandDPrintf("rf.gid: %v, rf.me: %v, pendingMsg: %v\n", rf.gid, rf.me, rf.pendingMsg)
 		for exists {
 			rf.lastApplied++
 			delete(rf.pendingMsg, nextApplied)
 			Snapshot2DPrintf("server: %v, applies index: %v.\n", rf.me, msg.CommandIndex)
-			ApplyCommandDPrintf("server: %v, applies index: %v.\n", rf.me, msg.CommandIndex)
+			ApplyCommandDPrintf("rf.gid: %v, rf.me: %v, applies index: %v.\n", rf.gid, rf.me, msg.CommandIndex)
 			rf.applyCh <- msg
 			nextApplied = int(rf.lastApplied + 1)
 			msg, exists = rf.pendingMsg[nextApplied]
-			ApplyCommandDPrintf("server: %v, msg: %v, exists: %v\n", rf.me, msg, exists)
-			ApplyCommandDPrintf("server: %v, pendingMsg: %v\n", rf.me, rf.pendingMsg)
+			ApplyCommandDPrintf("rf.gid: %v, rf.me: %v, msg: %v, exists: %v\n", rf.gid, rf.me, msg, exists)
+			ApplyCommandDPrintf("rf.gid: %v, rf.me: %v, pendingMsg: %v\n", rf.gid, rf.me, rf.pendingMsg)
 		}
-		rf.appliedLock.Unlock()
-		ApplyCommandDPrintf("server: %v, OrderedCommandDelivery finished one round.\n", rf.me)
+		ApplyCommandDPrintf("rf.gid: %v, rf.me: %v, rf.lastApplied: %v, OrderedCommandDelivery finished one round.\n", rf.gid, rf.me, rf.lastApplied)
+		rf.unlockApplied()
+		rf.lockMu("OrderedCommandDelivery()")
+		rf.logRaftStateForInstallSnapshot("OrderedCommandDelivery()")
+		rf.unlockMu()
 	}
 }

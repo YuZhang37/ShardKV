@@ -6,35 +6,7 @@ import (
 	"time"
 )
 
-// Debugging
-// const Debug = false
-// const DebugElection = false
-// const DebugAppendEntries = false
-// const DebugHeartbeat = false
-// const DebugPersistence = false
-
-// case 1:
-// const Debug = true
-// const DebugElection = true
-// const DebugAppendEntries = false
-// const DebugHeartbeat = true
-// const DebugPersistence = false
-
-// case 2:
-
-// const Debug = true
-// const DebugElection = false
-// const DebugAppendEntries = true
-// const DebugHeartbeat = false
-// const DebugPersistence = true
-
-// case 3:
-// const	Debug = true
-// const	DebugElection = true
-// const	DebugAppendEntries = false
-// const	DebugHeartbeat = true
-// const	DebugPersistence = true
-// case 4:
+// const colorRed = "\033[0;31m"
 const Debug = false
 const DebugElection = false
 const DebugAppendEntries = false
@@ -49,53 +21,81 @@ const DebugKVStore = false
 const DebugCommitNoop = false
 const DebugShardController = false
 const DebugShardKV = false
-const DebugSnapshotLock = false
+const DebugInstallSnapshot = false
+const DebugElectionWins = true
 
-const WatchLock = false
+const WatchLock = 1
 
 func (rf *Raft) lockMu(format string, a ...interface{}) {
 	rf.mu.Lock()
-	if WatchLock {
+	if WatchLock == 1 {
 		rf.lockChan = make(chan int)
-		go rf.testLock(format, a...)
+		go rf.watchMuLock(format, a...)
 	}
 }
 
 func (rf *Raft) unlockMu() {
-	if WatchLock {
+	if WatchLock == 1 {
 		rf.lockChan <- 1
 	}
 	rf.mu.Unlock()
 }
 
-func (rf *Raft) testLock(format string, a ...interface{}) {
+func (rf *Raft) watchMuLock(format string, a ...interface{}) {
 	quit := 0
 	for quit != 1 {
 		select {
 		case <-rf.lockChan:
 			quit = 1
 		case <-time.After(5 * time.Second):
-			rf.snapshotDPrintf("Raft testLock(): "+format+"is not unlocked", a...)
+			prefix := fmt.Sprintf("MuLock: rf.gid: %v, rf.me: %v ", rf.gid, rf.me)
+			log.Printf(prefix+"Raft testLock(): "+format+"is not unlocked\n", a...)
 		}
 	}
 }
 
-// const colorRed = "\033[0;31m"
-
-func DebugRaft(info int) {
-
-	log.Printf("Debug = %v, \nDebugElection = %v, \n DebugAppendEntries = %v, \n DebugHeartbeat = %v, \n DebugPersistence = %v\n", Debug, DebugElection, DebugAppendEntries, DebugHeartbeat, DebugPersistence)
+func (rf *Raft) lockApplied(format string, a ...interface{}) {
+	rf.appliedLock.Lock()
+	if WatchLock == 1 {
+		rf.appliedLockChan = make(chan int)
+		go rf.watchAppliedLock(format, a...)
+	}
 }
 
-func DPrintf(format string, a ...interface{}) (n int, err error) {
-	if Debug {
+func (rf *Raft) unlockApplied() {
+	if WatchLock == 1 {
+		rf.appliedLockChan <- 1
+	}
+	rf.appliedLock.Unlock()
+}
+
+func (rf *Raft) watchAppliedLock(format string, a ...interface{}) {
+	quit := 0
+	for quit != 1 {
+		select {
+		case <-rf.appliedLockChan:
+			quit = 1
+		case <-time.After(5 * time.Second):
+			prefix := fmt.Sprintf("AppliedLock: rf.gid: %v, rf.me: %v ", rf.gid, rf.me)
+			log.Printf(prefix+"Raft testLock(): "+format+"is not unlocked\n", a...)
+		}
+	}
+}
+
+func (rf *Raft) logFatal(format string, a ...interface{}) {
+	prefix := fmt.Sprintf("Fatal: Group: %v, ShardKVServer: %v, ", rf.gid, rf.me)
+	log.Fatalf(prefix+format, a...)
+}
+
+func ElectionDPrintf(format string, a ...interface{}) (n int, err error) {
+	if DebugElection {
 		log.Printf(format, a...)
 	}
 	return
 }
 
-func ElectionDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugElection {
+func ElectionWinsDPrintf(format string, a ...interface{}) (n int, err error) {
+	if DebugElectionWins {
 		log.Printf(format, a...)
 	}
 	return
@@ -196,6 +196,24 @@ func (rf *Raft) snapshotDPrintf(format string, a ...interface{}) (n int, err err
 	return
 }
 
+func (rf *Raft) logRaftStateForInstallSnapshot(msg string) {
+	if !DebugInstallSnapshot {
+		return
+	}
+	rf.lockApplied("logRaftStateForInstallSnapshot() with msg: %v", msg)
+	lastApplied := rf.lastApplied
+	rf.unlockApplied()
+	log.Printf("%v:\n rf.gid: %v, rf.me: %v, rf.role: %v,\n rf.appliedIndex: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, \n log entries (size %v): %v\n", msg, rf.gid, rf.me, rf.role, lastApplied, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), rf.log)
+}
+
+func (rf *Raft) debugInstallSnapshot(format string, a ...interface{}) (n int, err error) {
+	if DebugInstallSnapshot {
+		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v ", rf.gid, rf.me)
+		log.Printf(prefix+format, a...)
+	}
+	return
+}
+
 func (rf *Raft) logRaftState(msg string) {
 	if !DebugKVStore {
 		return
@@ -206,9 +224,9 @@ func (rf *Raft) logRaftState(msg string) {
 		firstEntry = rf.log[0]
 		lastEntry = rf.log[len(rf.log)-1]
 	}
-	rf.appliedLock.Lock()
+	rf.lockApplied("logRaftState() with msg: %v", msg)
 	lastApplied := rf.lastApplied
-	rf.appliedLock.Unlock()
+	rf.unlockApplied()
 	log.Printf("%v:\n rf.gid: %v, rf.me: %v, rf.role: %v, rf.appliedIndex: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, logsize: %v, first log entry: %v, last log entry: %v\n", msg, rf.gid, rf.me, rf.role, lastApplied, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), firstEntry, lastEntry)
 }
 

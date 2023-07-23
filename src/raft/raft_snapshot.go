@@ -32,8 +32,9 @@ the same as Snapshot, except that
 func (rf *Raft) insideSnapshot(lastIncludedIndex int, snapshot []byte) int {
 	Snapshot2DPrintf("server: %v, insideSnapshot() is called with lastIncludedIndex %v,\n", rf.me, lastIncludedIndex)
 
+	// lastIncludedIndex can be <= 0, if the command has been sent to the application but has been applied when taking the snapshot
 	if lastIncludedIndex <= 0 || lastIncludedIndex > rf.commitIndex {
-		log.Fatalf("Fatal: Raft Snapshot Error: server: %v, rf.role: %v, lastIndex %v, commitIndex: %v\n", rf.me, rf.role, lastIncludedIndex, rf.commitIndex)
+		log.Fatalf("Fatal: Raft Snapshot Error: rf.gid: %v, rf.me: %v, rf.role: %v, lastIncludedIndex %v, commitIndex: %v\n", rf.gid, rf.me, rf.role, lastIncludedIndex, rf.commitIndex)
 	}
 	/*
 		stale snapshot: < rf.snapshotLastIndex
@@ -46,7 +47,7 @@ func (rf *Raft) insideSnapshot(lastIncludedIndex int, snapshot []byte) int {
 	}
 	indexInLiveLog := rf.findEntryWithIndexInLog(lastIncludedIndex, rf.log, rf.snapshotLastIndex)
 	if indexInLiveLog >= len(rf.log) || indexInLiveLog < 0 {
-		log.Fatalf("Fatal: Raft Snapshot Error: indexInLiveLog: %v, len(log): %v, log %v doesn't contain index: %v\n", indexInLiveLog, rf.log, len(rf.log), lastIncludedIndex)
+		log.Fatalf("Fatal: Raft Snapshot Error: rf.gid: %v, rf.me: %v, rf.role: %v,indexInLiveLog: %v, len(log): %v, log %v doesn't contain index: %v\n", rf.gid, rf.me, rf.role, indexInLiveLog, rf.log, len(rf.log), lastIncludedIndex)
 	}
 	rf.snapshotLastIndex = lastIncludedIndex
 	rf.snapshotLastTerm = rf.log[indexInLiveLog].Term
@@ -147,9 +148,6 @@ func (rf *Raft) InstallSnapshot(args *SendSnapshotArgs, reply *SendSnapshotReply
 	// the snapshot is accepted
 	Snapshot2DPrintf("server: %v, snapshot is accepted: args.LeaderId: %v, args.Term: %v, args.LastIncludedIndex: %v, args.LastIncludedTerm: %v\n", rf.me, args.LeaderId, args.Term, args.LastIncludedIndex, args.LastIncludedTerm)
 	KVStoreDPrintf("server: %v, snapshot is accepted: args.LeaderId: %v, args.Term: %v, args.LastIncludedIndex: %v, args.LastIncludedTerm: %v\n", rf.me, args.LeaderId, args.Term, args.LastIncludedIndex, args.LastIncludedTerm)
-	// rf.appliedLock.Lock()
-	// Snapshot2DPrintf("server: %v, lastApplied: %v, commitIndex: %v\n", rf.me, rf.lastApplied, rf.commitIndex)
-	// rf.appliedLock.Unlock()
 	reply.Installed = true
 	reply.LastIncludedIndex = args.LastIncludedIndex
 	reply.LastIncludedTerm = args.LastIncludedTerm
@@ -170,10 +168,6 @@ func (rf *Raft) InstallSnapshot(args *SendSnapshotArgs, reply *SendSnapshotReply
 		// keep all log entries following LastIncludedIndex
 		// installed=true
 		rf.log = rf.log[lastIndex+1:]
-		// rf.appliedLock.Lock()
-		// Snapshot2DPrintf("server: %v log matching at %v\n", rf.me, args.LastIncludedIndex)
-
-		// rf.appliedLock.Unlock()
 	}
 	if args.LastIncludedIndex > rf.commitIndex {
 		rf.commitIndex = args.LastIncludedIndex
@@ -214,7 +208,6 @@ func (rf *Raft) SendAndHarvestSnapshot(server int) {
 }
 
 func (rf *Raft) signalSnapshot() bool {
-	Snapshot2DPrintf("server: %v, SendSnapshot() is called\n", rf.me)
 	rf.snapshotDPrintf("SendSnapshot() is called\n")
 	killed := false
 	received := false

@@ -166,7 +166,12 @@ func (rf *Raft) getAppendEntriesArgs(server int, next int, issueEntryIndex int) 
 
 	if issueEntryIndex != -1 {
 		// not a heartbeat
-		entries = rf.log[indexInLiveLog:]
+		// copy entries, to avoid race condition on rpc encoding
+		for index := indexInLiveLog; index < len(rf.log); index++ {
+			entry := rf.log[index]
+			entries = append(entries, entry)
+		}
+
 	}
 
 	args := AppendEntriesArgs{
