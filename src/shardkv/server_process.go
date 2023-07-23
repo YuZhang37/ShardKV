@@ -33,7 +33,7 @@ func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
 		skv.initializeShardsFromConfig()
 		skv.tempDPrintf("finishes initializing for ConfigUpdateCommand, skv.serveShardIDs: %v,\n skv.serveShards: %v,\n skv.serveCachedReplies: %v\n", skv.serveShardIDs, skv.serveShards, skv.serveCachedReplies)
 	}
-	sortedShards := skv.sortedKeys(skv.serveShardIDs)
+	sortedShards := skv.sortedKeys1(skv.serveShardIDs)
 	skv.tempDPrintf("processConfigUpdate(): sortedShards: %v, skv.serveShardIDs: %v\n", sortedShards, skv.serveShardIDs)
 	for _, shard := range sortedShards {
 		if skv.config.Shards[shard] != skv.gid {
@@ -44,7 +44,9 @@ func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
 			skv.unlockShard(shard)
 		}
 	}
-	for shard, configNum := range skv.futureServeConfigNums {
+	sortedShards = skv.sortedKeys2(skv.futureServeConfigNums)
+	for _, shard := range sortedShards {
+		configNum := skv.futureServeConfigNums[shard]
 		if configNum <= skv.config.Num {
 			skv.tempDPrintf("processConfigUpdate() processes future shard: %v\n", shard)
 			skv.lockShard(shard, "processConfigUpdate() 2 with command: %v", command)
@@ -69,7 +71,16 @@ func (skv *ShardKV) processConfigUpdate(command ConfigUpdateCommand) {
 	}
 }
 
-func (skv *ShardKV) sortedKeys(groups map[int]bool) []int {
+func (skv *ShardKV) sortedKeys1(groups map[int]bool) []int {
+	keys := make([]int, 0)
+	for key := range groups {
+		keys = append(keys, key)
+	}
+	sort.Ints(keys)
+	return keys
+}
+
+func (skv *ShardKV) sortedKeys2(groups map[int]int) []int {
 	keys := make([]int, 0)
 	for key := range groups {
 		keys = append(keys, key)

@@ -6,14 +6,14 @@ import (
 	"time"
 )
 
-const TempDebug = true
-const MoveShardDebug = true
-const TransmitSenderDebug = true
-const TransmitHandlerDebug = true
-const SnapshotDebug = true
-const FollowerDebug = true
-const Temp2Debug = true
-const TestDebug = true
+const TempDebug = false
+const MoveShardDebug = false
+const TransmitSenderDebug = false
+const TransmitHandlerDebug = false
+const SnapshotDebug = false
+const FollowerDebug = false
+const Temp2Debug = false
+const TestDebug = false
 
 const WatchLock = 1
 
@@ -163,7 +163,7 @@ func (skv *ShardKV) tempDPrintf(format string, a ...interface{}) (n int, err err
 func (skv *ShardKV) transmitSenderDPrintf(format string, a ...interface{}) (n int, err error) {
 	if TransmitSenderDebug {
 		votedFor := int(skv.rf.GetVotedFor())
-		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
+		prefix := fmt.Sprintf("ShardKVServer: %v, Group: %v, ", skv.gid, skv.me)
 		if votedFor == skv.me || FollowerDebug {
 			log.Printf(prefix+format, a...)
 		}
@@ -174,7 +174,7 @@ func (skv *ShardKV) transmitSenderDPrintf(format string, a ...interface{}) (n in
 func (skv *ShardKV) transmitHandlerDPrintf(format string, a ...interface{}) (n int, err error) {
 	if TransmitHandlerDebug {
 		votedFor := int(skv.rf.GetVotedFor())
-		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
+		prefix := fmt.Sprintf("ShardKVServer: %v, Group: %v, ", skv.gid, skv.me)
 		if votedFor == skv.me || FollowerDebug {
 			log.Printf(prefix+format, a...)
 		}
@@ -185,18 +185,7 @@ func (skv *ShardKV) transmitHandlerDPrintf(format string, a ...interface{}) (n i
 func (skv *ShardKV) moveShardDPrintf(format string, a ...interface{}) (n int, err error) {
 	if MoveShardDebug {
 		votedFor := int(skv.rf.GetVotedFor())
-		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
-		if votedFor == skv.me || FollowerDebug {
-			log.Printf(prefix+format, a...)
-		}
-	}
-	return
-}
-
-func (skv *ShardKV) snapshotDPrintf(leaderId int, format string, a ...interface{}) (n int, err error) {
-	if SnapshotDebug {
-		votedFor := int(skv.rf.GetVotedFor())
-		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
+		prefix := fmt.Sprintf("ShardKVServer: %v, Group: %v, ", skv.gid, skv.me)
 		if votedFor == skv.me || FollowerDebug {
 			log.Printf(prefix+format, a...)
 		}

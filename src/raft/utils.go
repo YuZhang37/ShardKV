@@ -10,17 +10,17 @@ import (
 const debugElection = false
 const debugAppendEntries = false
 const debugHeartbeat = false
-const debugPersistence = true
+const debugPersistence = false
 const debugTest = false
-const debugApplyCommand = true
-const debugSnapshot2 = true
-const debugKVStore = true
-const debugShardKV = true
-const debugInstallSnapshot = true
+const debugApplyCommand = false
+const debugSnapshot2 = false
+const debugKVStore = false
+const debugShardKV = false
+const debugInstallSnapshot = false
 const debugElectionWins = true
 
-const tempDebug = true
-const followerDebug = true
+const tempDebug = false
+const followerDebug = false
 
 const WatchLock = 1
 

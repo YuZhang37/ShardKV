@@ -69,7 +69,6 @@ func (rf *Raft) insideApplyCommand(issuedIndex int, locked bool) {
 			CommandIndex: rf.log[indexInLiveLog].Index,
 			CommandTerm:  rf.log[indexInLiveLog].Term,
 		}
-		// rf.logRaftStateForInstallSnapshot(fmt.Sprintf("insideApplyCommand(): msg: %v\n", msg))
 		if !locked {
 			rf.unlockMu()
 		}
