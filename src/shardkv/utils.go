@@ -6,16 +6,16 @@ import (
 	"time"
 )
 
-const TempDebug = true
-const MoveShardDebug = true
-const TransmitSenderDebug = true
-const TransmitHandlerDebug = true
-const SnapshotDebug = true
-const FollowerDebug = true
-const Temp2Debug = true
-const TestDebug = true
+const TempDebug = false
+const MoveShardDebug = false
+const TransmitSenderDebug = false
+const TransmitHandlerDebug = false
+const SnapshotDebug = false
+const FollowerDebug = false
+const Temp2Debug = false
+const TestDebug = false
 
-const WatchLock = true
+const WatchLock = false
 
 func (skv *ShardKV) lockMu(format string, a ...interface{}) {
 	skv.mu.Lock()

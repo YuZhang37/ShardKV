@@ -1,0 +1,18 @@
+Run 10 times:
+
+Passed:
+    TestStaticShards
+    TestJoinLeave
+    TestJoinJoinLeave
+    TestJoinJoinAndLeaveLeave (11 times, 7.361s-12.902s)
+    TestSnapshot (11 times, 8.341s-13.083s)
+    TestMissChange (11 times, 12.953s-17.656s)
+    TestConcurrent1 (11 times, 4.653s-10.919s)
+    TestConcurrent02 (11 times, 14.257s-15.961s)
+    TestConcurrent2 (11 times, 13.898s - 16.992s)
+    TestUnreliable1 (11 times, 11.449s - 18.095s)
+    TestUnreliable2 (11 times, 9.937s - 16.247s)
+    TestUnreliable3 (11 times, 8.977s - 14.699s)
+    TestChallenge1Delete (11 times, 16.940s - 18.545s)
+    TestChallenge2Unaffected (11 times, 7.084s - 10.834s)
+    TestChallenge2Partial (11 times, 4.935s - 7.647s)

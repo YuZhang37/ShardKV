@@ -45,13 +45,13 @@ const DebugSnapshot = false
 const DebugApplyCommand = false
 const DebugTemp = false
 const DebugSnapshot2 = false
-const DebugKVStore = true
+const DebugKVStore = false
 const DebugCommitNoop = false
 const DebugShardController = false
-const DebugShardKV = true
-const DebugSnapshotLock = true
+const DebugShardKV = false
+const DebugSnapshotLock = false
 
-const WatchLock = true
+const WatchLock = false
 
 func (rf *Raft) lockMu(format string, a ...interface{}) {
 	rf.mu.Lock()
