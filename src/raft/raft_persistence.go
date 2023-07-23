@@ -77,7 +77,7 @@ func (rf *Raft) persistStateWithSnapshot(format string, a ...interface{}) {
 	)
 	data := rf.getRaftStateData()
 	rf.persister.Save(data, rf.snapshot)
-	rf.tempDPrintf("persistStateWithSnapshot(): finished persist states  for %v\n", rf.me, fmt.Sprintf(format, a...))
+	rf.tempDPrintf("persistStateWithSnapshot(): finished persist states  for %v\n", fmt.Sprintf(format, a...))
 }
 
 func (rf *Raft) getRaftStateData() []byte {

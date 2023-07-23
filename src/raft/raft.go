@@ -198,7 +198,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 // rf.mu is held
 func (rf *Raft) commitNoop() {
-	rf.kvStoreDPrintf("commitNoop(): gets running..\n", rf.me)
+	rf.kvStoreDPrintf("commitNoop(): gets running..\n")
 	noop := Noop{
 		Operation: NOOP,
 	}

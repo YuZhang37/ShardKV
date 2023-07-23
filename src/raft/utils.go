@@ -10,17 +10,17 @@ import (
 const debugElection = false
 const debugAppendEntries = false
 const debugHeartbeat = false
-const debugPersistence = false
+const debugPersistence = true
 const debugTest = false
-const debugApplyCommand = false
-const debugSnapshot2 = false
-const debugKVStore = false
-const debugShardKV = false
-const debugInstallSnapshot = false
+const debugApplyCommand = true
+const debugSnapshot2 = true
+const debugKVStore = true
+const debugShardKV = true
+const debugInstallSnapshot = true
 const debugElectionWins = true
 
-const tempDebug = false
-const followerDebug = false
+const tempDebug = true
+const followerDebug = true
 
 const WatchLock = 1
 
@@ -47,7 +47,7 @@ func (rf *Raft) watchMuLock(format string, a ...interface{}) {
 			quit = 1
 		case <-time.After(5 * time.Second):
 			prefix := fmt.Sprintf("MuLock: rf.gid: %v, rf.me: %v ", rf.gid, rf.me)
-			log.Printf(prefix+"Raft testLock(): "+format+"is not unlocked\n", a...)
+			log.Printf(prefix+"Raft testLock(): "+format+" is not unlocked\n", a...)
 		}
 	}
 }
@@ -75,7 +75,7 @@ func (rf *Raft) watchAppliedLock(format string, a ...interface{}) {
 			quit = 1
 		case <-time.After(5 * time.Second):
 			prefix := fmt.Sprintf("AppliedLock: rf.gid: %v, rf.me: %v ", rf.gid, rf.me)
-			log.Printf(prefix+"Raft testLock(): "+format+"is not unlocked\n", a...)
+			log.Printf(prefix+"Raft testLock(): "+format+" is not unlocked\n", a...)
 		}
 	}
 }
@@ -214,10 +214,7 @@ func (rf *Raft) logRaftStateForInstallSnapshot(msg string) {
 	if !debugInstallSnapshot {
 		return
 	}
-	rf.lockApplied("logRaftStateForInstallSnapshot() with msg: %v", msg)
-	lastApplied := rf.lastApplied
-	rf.unlockApplied()
-	log.Printf("%v:\n rf.gid: %v, rf.me: %v, rf.role: %v,\n rf.appliedIndex: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, \n log entries (size %v): %v\n", msg, rf.gid, rf.me, rf.role, lastApplied, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), rf.log)
+	log.Printf("%v:\n rf.gid: %v, rf.me: %v, rf.role: %v,\n rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, \n log entries (size %v): %v\n", msg, rf.gid, rf.me, rf.role, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), rf.log)
 }
 
 func (rf *Raft) debugInstallSnapshot(format string, a ...interface{}) (n int, err error) {
@@ -238,10 +235,7 @@ func (rf *Raft) logRaftState(msg string) {
 		firstEntry = rf.log[0]
 		lastEntry = rf.log[len(rf.log)-1]
 	}
-	rf.lockApplied("logRaftState() with msg: %v", msg)
-	lastApplied := rf.lastApplied
-	rf.unlockApplied()
-	log.Printf("%v:\n rf.gid: %v, rf.me: %v, rf.role: %v, rf.appliedIndex: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, logsize: %v, first log entry: %v, last log entry: %v\n", msg, rf.gid, rf.me, rf.role, lastApplied, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), firstEntry, lastEntry)
+	log.Printf("%v:\n rf.gid: %v, rf.me: %v, rf.role: %v, rf.commitIndex: %v, rf.snapshotLastIndex: %v, rf.snapshotLastTerm: %v, logsize: %v, first log entry: %v, last log entry: %v\n", msg, rf.gid, rf.me, rf.role, rf.commitIndex, rf.snapshotLastIndex, rf.snapshotLastTerm, len(rf.log), firstEntry, lastEntry)
 }
 
 func (rf *Raft) logRaftState2(size int) {
