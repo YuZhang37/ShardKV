@@ -50,9 +50,9 @@ it can update the commitIndex, but it's not necessary since this state is non-vo
 false replies are ignored, including the ones with higherTerm
 */
 func (rf *Raft) HandleTrailingReply() {
-	AppendEntriesDPrintf("HandleTrailingReply gets running....")
+	rf.appendEntriesDPrintf("HandleTrailingReply gets running....")
 	for reply := range rf.trailingReplyChan {
-		AppendEntriesDPrintf("HandleTrailingReply got Reply: %v", reply)
+		rf.appendEntriesDPrintf("HandleTrailingReply(): HandleTrailingReply got Reply: %v", reply)
 		if !reply.Success {
 			// ignore highIndex which can invalidate the current leader
 			continue
@@ -102,7 +102,7 @@ func (rf *Raft) onReceivingAppendEntriesReply(reply *AppendEntriesReply, success
 		}
 	} else if reply.HigherTerm && reply.Term > rf.currentTerm {
 		originalTerm := rf.onReceiveHigherTerm(reply.Term)
-		rf.persistState("server %v try to commit %v replies on %v with higher term: %v, original term: %v", rf.me, entryIndex, reply.Server, reply.Term, originalTerm)
+		rf.persistState("onReceivingAppendEntriesReply(): try to commit %v replies on %v with higher term: %v, original term: %v", entryIndex, reply.Server, reply.Term, originalTerm)
 		tryCommit = false
 	}
 	// the reply when failed with higher issue index is dropped
@@ -159,7 +159,7 @@ func (rf *Raft) getAppendEntriesArgs(server int, next int, issueEntryIndex int) 
 		prevLogTerm = rf.snapshotLastTerm
 	} else {
 		// there is a previous entry
-		TestDPrintf("Server %v next index at Server %v is %v\n", server, rf.me, next)
+		rf.testDPrintf("getAppendEntriesArgs(): Server %v next index at Server %v is %v\n", server, rf.me, next)
 		prevLogIndex = rf.log[indexInLiveLog-1].Index
 		prevLogTerm = rf.log[indexInLiveLog-1].Term
 	}

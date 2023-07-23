@@ -7,13 +7,13 @@ follower or candidate server will execute this function for heartbeat or appendE
 for heartbeat: args.IssueEntryIndex is -1 and no entries
 */
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	KVStoreDPrintf("Server: %v, AppendEntries is called with %v\n", rf.me, args)
-	defer KVStoreDPrintf("Server: %v, AppendEntries finished with %v\n", rf.me, reply)
+	rf.kvStoreDPrintf("AppendEntries(): called with %v\n", args)
+	defer rf.kvStoreDPrintf("AppendEntries(): finished with %v\n", reply)
 	funct := 1
 	if args.IssueEntryIndex == -1 {
 		funct = 2
 	}
-	AppendEntries2DPrintf(funct, "Command from %v received by %v at index of %v\n", args.LeaderId, rf.me, args.PrevLogIndex+1)
+	rf.appendEntries2DPrintf(funct, "AppendEntries(): Command from %v received by %v at index of %v\n", args.LeaderId, rf.me, args.PrevLogIndex+1)
 
 	rf.lockMu("AppendEntries with args: %v\n", args)
 	defer rf.unlockMu()
@@ -51,8 +51,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 	// need to update commitIndex on receiving heartbeat
 	rf.updateCommitIndexOnReceivingAppendEntries(args)
-	AppendEntries2DPrintf(funct, "Command from %v is appended by %v at index of %v\n", args.LeaderId, rf.me, len(rf.log))
-	AppendEntries2DPrintf(funct, "logs on server %v: %v\n", rf.me, rf.log)
+	rf.appendEntries2DPrintf(funct, "AppendEntries(): Command from %v is appended by %v at index of %v\n", args.LeaderId, rf.me, len(rf.log))
+	rf.appendEntries2DPrintf(funct, "AppendEntries(): logs on server %v: %v\n", rf.me, rf.log)
 
 }
 
@@ -97,7 +97,7 @@ func (rf *Raft) checkPrevLogMisMatch(args *AppendEntriesArgs, reply *AppendEntri
 		2. this entry is alive
 	*/
 	indexInLiveLog := rf.findEntryWithIndexInLog(args.PrevLogIndex, rf.log, rf.snapshotLastIndex)
-	SnapshotDPrintf("server: %v, indexInLiveLog: %v, args.PrevLogIndex: %v\n", rf.me, indexInLiveLog, args.PrevLogIndex)
+	rf.snapshotDPrintf("checkPrevLogMisMatch(): indexInLiveLog: %v, args.PrevLogIndex: %v\n", indexInLiveLog, args.PrevLogIndex)
 	/*
 		if indexInLiveLog == -1, then the prev log entry has been committed and merged, must be matching
 	*/
@@ -145,7 +145,7 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 		if rf.log[len(rf.log)-1].Index <= args.LeaderCommitIndex {
 			rf.logRaftStateForInstallSnapshot(fmt.Sprintf("here appendNewEntriesFromArgs() with args: %v", args))
 			rf.commitIndex = rf.log[len(rf.log)-1].Index
-			rf.debugInstallSnapshot("rf.commitIndex: %v, rf.log[len(rf.log)-1].Index: %v\n", rf.commitIndex, rf.log[len(rf.log)-1].Index)
+			rf.debugInstallSnapshot("appendNewEntriesFromArgs(): rf.commitIndex: %v, rf.log[len(rf.log)-1].Index: %v\n", rf.commitIndex, rf.log[len(rf.log)-1].Index)
 		}
 	}
 
@@ -157,7 +157,7 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 		size := rf.getLogSize(newLog)
 		if !isNoop && rf.maxLogSize >= 0 && size >= rf.maxLogSize {
 			// snapshot enabled
-			rf.logRaftState("from follower: before signalSnapshot")
+			rf.logRaftState("appendNewEntriesFromArgs(): from follower: before signalSnapshot")
 			rf.logRaftState2(size)
 			if rf.commitIndex > rf.snapshotLastIndex {
 				// there are log entries to compact, compact them
@@ -165,31 +165,31 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 				rf.signalSnapshot()
 				newLog = append(rf.log, entry)
 				size = rf.getLogSize(newLog)
-				rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
-				rf.logRaftState("from leader: after signalSnapshot")
+				rf.persistState("appendNewEntriesFromArgs(): server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
+				rf.logRaftState("appendNewEntriesFromArgs(): from leader: after signalSnapshot")
 			}
 			if size >= rf.maxLogSize {
 				// snapshot enabled and size still exceeds the limit after taking the snapshot
 				// stop appending
-				msg := fmt.Sprintf("AppendNewEntriesFromArgs() appends up to entry(not appended): %v with args: %v\n", entry, args)
+				msg := fmt.Sprintf("AppendNewEntriesFromArgs(): appends up to entry(not appended): %v with args: %v\n", entry, args)
 				rf.logRaftStateForInstallSnapshot(msg)
 				break
 			}
 		}
 		if !isNoop && rf.maxLogSize == -2 {
 			// must apply the command first and take a snapshot if there is log entry
-			rf.logRaftState("from follower: before signalSnapshot")
+			rf.logRaftState("appendNewEntriesFromArgs(): from follower: before signalSnapshot")
 			if len(rf.log) > 0 {
 				if rf.commitIndex > rf.snapshotLastIndex {
 					// there are log entries to compact, compact them
 					rf.insideApplyCommand(rf.commitIndex, true)
 					rf.signalSnapshot()
 					newLog = append(rf.log, entry)
-					rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
-					rf.logRaftState("from leader: after signalSnapshot")
+					rf.persistState("appendNewEntriesFromArgs(): server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
+					rf.logRaftState("appendNewEntriesFromArgs(): from leader: after signalSnapshot")
 				}
 				if len(rf.log) > 0 {
-					msg := fmt.Sprintf("AppendNewEntriesFromArgs() appends up to entry(not appended): %v with args: %v\n", entry, args)
+					msg := fmt.Sprintf("AppendNewEntriesFromArgs(): appends up to entry(not appended): %v with args: %v\n", entry, args)
 					rf.logRaftStateForInstallSnapshot(msg)
 					break
 				}
@@ -198,7 +198,7 @@ func (rf *Raft) appendNewEntriesFromArgs(indexInLiveLog int, args *AppendEntries
 
 		// snapshot disabled or size is below the limit
 		rf.log = newLog
-		rf.persistState("server %v appends new entries %v to %v", rf.me, args, rf.currentAppended)
+		rf.persistState("appendNewEntriesFromArgs(): appends new entries %v to %v", args, rf.currentAppended)
 		// update commitIndex and currentAppended
 		// each time a new log entry is appended
 		if entry.Index <= args.LeaderCommitIndex {

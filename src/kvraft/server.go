@@ -28,7 +28,7 @@ func (kv *KVServer) RequestHandler(args *RequestArgs, reply *RequestReply) {
 	clerkChan := make(chan RequestReply)
 	kv.clerkChans[args.ClerkId] = clerkChan
 	kv.mu.Unlock()
-	raft.KVStoreDPrintf("Got command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
+	raft.rf.kvStoreDPrintf("Got command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
 	if !kv.startCommit(command, reply) {
 		return
 	}
@@ -88,7 +88,7 @@ func (kv *KVServer) startCommit(command *KVCommand, reply *RequestReply) bool {
 			return false
 		}
 		if index > 0 {
-			raft.KVStoreDPrintf("Appended command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
+			raft.rf.kvStoreDPrintf("Appended command: ClerkId=%v, SeqNum=%v, Key=%v, Value=%v, Operation=%v\n", command.ClerkId, command.SeqNum, command.Key, command.Value, command.Operation)
 			quit = true
 		} else {
 			// the server is the leader, but log exceeds maxLogSize
@@ -99,7 +99,7 @@ func (kv *KVServer) startCommit(command *KVCommand, reply *RequestReply) bool {
 				return false
 			}
 			TempDPrintf("KVServer: %v the leader can't add new command: %v, LeaderId: %v\n", kv.me, command, kv.me)
-			raft.KVStoreDPrintf("kv.me: %v, retry index: %v, on command: %v", kv.me, index, command)
+			raft.rf.kvStoreDPrintf("kv.me: %v, retry index: %v, on command: %v", kv.me, index, command)
 		}
 	}
 	return true

@@ -7,22 +7,20 @@ import (
 )
 
 // const colorRed = "\033[0;31m"
-const Debug = false
-const DebugElection = false
-const DebugAppendEntries = false
-const DebugHeartbeat = false
-const DebugPersistence = false
-const DebugTest = false
-const DebugSnapshot = false
-const DebugApplyCommand = false
-const DebugTemp = false
-const DebugSnapshot2 = false
-const DebugKVStore = false
-const DebugCommitNoop = false
-const DebugShardController = false
-const DebugShardKV = false
-const DebugInstallSnapshot = false
-const DebugElectionWins = true
+const debugElection = false
+const debugAppendEntries = false
+const debugHeartbeat = false
+const debugPersistence = false
+const debugTest = false
+const debugApplyCommand = false
+const debugSnapshot2 = false
+const debugKVStore = false
+const debugShardKV = false
+const debugInstallSnapshot = false
+const debugElectionWins = true
+
+const tempDebug = false
+const followerDebug = false
 
 const WatchLock = 1
 
@@ -87,109 +85,125 @@ func (rf *Raft) logFatal(format string, a ...interface{}) {
 	log.Fatalf(prefix+format, a...)
 }
 
-func ElectionDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugElection {
-		log.Printf(format, a...)
+func (rf *Raft) tempDPrintf(format string, a ...interface{}) (n int, err error) {
+	if tempDebug {
+		votedFor := int(rf.GetVotedFor())
+		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v, ", rf.gid, rf.me)
+		if votedFor == rf.me || followerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
-func ElectionWinsDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugElectionWins {
-		log.Printf(format, a...)
+func (rf *Raft) electionDPrintf(format string, a ...interface{}) (n int, err error) {
+	if debugElection {
+		votedFor := int(rf.GetVotedFor())
+		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v, ", rf.gid, rf.me)
+		if votedFor == rf.me || followerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
-func AppendEntriesDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugAppendEntries {
-		log.Printf(format, a...)
+func (rf *Raft) electionWinsDPrintf(format string, a ...interface{}) (n int, err error) {
+	if debugElectionWins {
+		votedFor := int(rf.GetVotedFor())
+		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v, ", rf.gid, rf.me)
+		if votedFor == rf.me || followerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
-func HeartbeatDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugHeartbeat {
-		log.Printf(format, a...)
+func (rf *Raft) appendEntriesDPrintf(format string, a ...interface{}) (n int, err error) {
+	if debugAppendEntries {
+		votedFor := int(rf.GetVotedFor())
+		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v, ", rf.gid, rf.me)
+		if votedFor == rf.me || followerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
-func AppendEntries2DPrintf(funct int, format string, a ...interface{}) (n int, err error) {
-	if funct == 1 && DebugAppendEntries {
-		log.Printf(format, a...)
+func (rf *Raft) appendEntries2DPrintf(funct int, format string, a ...interface{}) (n int, err error) {
+	if funct == 1 && debugAppendEntries {
+		votedFor := int(rf.GetVotedFor())
+		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v, ", rf.gid, rf.me)
+		if votedFor == rf.me || followerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
-	if funct == 2 && DebugHeartbeat {
-		log.Printf(format, a...)
-	}
-	return
-}
-
-func PersistenceDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugPersistence {
-		log.Printf(format, a...)
-	}
-	return
-}
-
-func TestDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugTest {
-		log.Printf("\n \033[0;31m "+format+" \n", a...)
+	if funct == 2 && debugHeartbeat {
+		votedFor := int(rf.GetVotedFor())
+		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v, ", rf.gid, rf.me)
+		if votedFor == rf.me || followerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
-func SnapshotDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugSnapshot {
-		log.Printf(format, a...)
+func (rf *Raft) persistenceDPrintf(format string, a ...interface{}) (n int, err error) {
+	if debugPersistence {
+		votedFor := int(rf.GetVotedFor())
+		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v, ", rf.gid, rf.me)
+		if votedFor == rf.me || followerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
-func Snapshot2DPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugSnapshot2 {
-		log.Printf(format, a...)
+func (rf *Raft) testDPrintf(format string, a ...interface{}) (n int, err error) {
+	if debugTest {
+		votedFor := int(rf.GetVotedFor())
+		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v, ", rf.gid, rf.me)
+		if votedFor == rf.me || followerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
-func TempDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugTemp {
-		log.Printf(format, a...)
+func (rf *Raft) snapshot2DPrintf(format string, a ...interface{}) (n int, err error) {
+	if debugSnapshot2 {
+		votedFor := int(rf.GetVotedFor())
+		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v, ", rf.gid, rf.me)
+		if votedFor == rf.me || followerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
-func ApplyCommandDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugApplyCommand {
-		log.Printf(format, a...)
+func (rf *Raft) applyCommandDPrintf(format string, a ...interface{}) (n int, err error) {
+	if debugApplyCommand {
+		votedFor := int(rf.GetVotedFor())
+		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v, ", rf.gid, rf.me)
+		if votedFor == rf.me || followerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
-func KVStoreDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugKVStore {
-		log.Printf(format, a...)
-	}
-	return
-}
-
-func ShardControllerDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugShardController {
-		log.Printf(format, a...)
-	}
-	return
-}
-
-func ShardKVDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugShardKV {
-		log.Printf(format, a...)
+func (rf *Raft) kvStoreDPrintf(format string, a ...interface{}) (n int, err error) {
+	if debugKVStore {
+		votedFor := int(rf.GetVotedFor())
+		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v, ", rf.gid, rf.me)
+		if votedFor == rf.me || followerDebug {
+			log.Printf(prefix+format, a...)
+		}
 	}
 	return
 }
 
 func (rf *Raft) snapshotDPrintf(format string, a ...interface{}) (n int, err error) {
-	if DebugShardKV && int(rf.votedFor) == rf.me {
+	if debugShardKV && int(rf.votedFor) == rf.me {
 		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v ", rf.gid, rf.me)
 		log.Printf(prefix+format, a...)
 	}
@@ -197,7 +211,7 @@ func (rf *Raft) snapshotDPrintf(format string, a ...interface{}) (n int, err err
 }
 
 func (rf *Raft) logRaftStateForInstallSnapshot(msg string) {
-	if !DebugInstallSnapshot {
+	if !debugInstallSnapshot {
 		return
 	}
 	rf.lockApplied("logRaftStateForInstallSnapshot() with msg: %v", msg)
@@ -207,7 +221,7 @@ func (rf *Raft) logRaftStateForInstallSnapshot(msg string) {
 }
 
 func (rf *Raft) debugInstallSnapshot(format string, a ...interface{}) (n int, err error) {
-	if DebugInstallSnapshot {
+	if debugInstallSnapshot {
 		prefix := fmt.Sprintf("rf.gid: %v, rf.me: %v ", rf.gid, rf.me)
 		log.Printf(prefix+format, a...)
 	}
@@ -215,7 +229,7 @@ func (rf *Raft) debugInstallSnapshot(format string, a ...interface{}) (n int, er
 }
 
 func (rf *Raft) logRaftState(msg string) {
-	if !DebugKVStore {
+	if !debugKVStore {
 		return
 	}
 	firstEntry := LogEntry{}
@@ -231,5 +245,5 @@ func (rf *Raft) logRaftState(msg string) {
 }
 
 func (rf *Raft) logRaftState2(size int) {
-	KVStoreDPrintf("rf.gid: %v, rf.me: %v, size of new log: %v, exceeds maxLogsize: %v rf.commitIndex: %v, rf.snapshotLstIndex: %v, will snapshot: %v\n", rf.gid, rf.me, size, rf.maxLogSize, rf.commitIndex, rf.snapshotLastIndex, rf.commitIndex > rf.snapshotLastIndex)
+	rf.kvStoreDPrintf("rf.gid: %v, rf.me: %v, size of new log: %v, exceeds maxLogsize: %v rf.commitIndex: %v, rf.snapshotLstIndex: %v, will snapshot: %v\n", rf.gid, rf.me, size, rf.maxLogSize, rf.commitIndex, rf.snapshotLastIndex, rf.commitIndex > rf.snapshotLastIndex)
 }

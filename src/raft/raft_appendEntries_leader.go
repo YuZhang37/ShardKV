@@ -1,14 +1,13 @@
 package raft
 
 import (
-	"log"
 	"time"
 )
 
 func (rf *Raft) reachConsensus(index int) {
 
 	rf.lockMu("1 reachConsensus() with index: %v\n", index)
-	KVStoreDPrintf("Server: %v reachConsensus at index: %v,, log: %v, commitIndex: %v\n", rf.me, index, rf.log, rf.commitIndex)
+	rf.kvStoreDPrintf("reachConsensus(): reachConsensus at index: %v,, log: %v, commitIndex: %v\n", index, rf.log, rf.commitIndex)
 	if rf.killed() || rf.role != LEADER {
 		rf.unlockMu()
 		return
@@ -51,10 +50,10 @@ func (rf *Raft) reachConsensus(index int) {
 
 	rf.lockMu("2 reachConsensus() with index: %v\n", index)
 	if committed {
-		KVStoreDPrintf("Server: %v succeeded the reachConsensus at index: %v, commitIndex: %v, log: %v.\n", rf.me, index, rf.commitIndex, rf.log)
+		rf.kvStoreDPrintf("reachConsensus(): succeeded the reachConsensus at index: %v, commitIndex: %v, log: %v.\n", index, rf.commitIndex, rf.log)
 		go rf.ApplyCommand(index)
 	} else {
-		KVStoreDPrintf("Server: %v failed the reachConsensus at index: %v, commitIndex: %v, log: %v.\n", rf.me, index, rf.commitIndex, rf.log)
+		rf.kvStoreDPrintf("reachConsensus(): failed the reachConsensus at index: %v, commitIndex: %v, log: %v.\n", index, rf.commitIndex, rf.log)
 	}
 	rf.unlockMu()
 }
@@ -129,10 +128,10 @@ func (rf *Raft) sendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 		funct = 2
 	}
 	next := rf.nextIndices[server]
-	AppendEntries2DPrintf(funct, "next index to %v is %v \n", server, next)
+	rf.appendEntries2DPrintf(funct, "sendAppendEntries(): next index to %v is %v \n", server, next)
 	if next < 1 {
 		rf.unlockMu()
-		log.Fatalf("Fatal: rf.gid: %v, rf.me: %v, sendAppendEntries() with server %v, issueEntryIndex %v, next index to %v is %v \n", rf.gid, rf.me, server, issueEntryIndex, server, next)
+		rf.logFatal("sendAppendEntries(): with server %v, issueEntryIndex %v, next index to %v is %v \n", server, issueEntryIndex, server, next)
 	}
 
 	if next <= rf.snapshotLastIndex {
@@ -142,8 +141,8 @@ func (rf *Raft) sendAppendEntries(server int, issueEntryIndex int, ch chan Appen
 		return
 	}
 	args := rf.getAppendEntriesArgs(server, next, issueEntryIndex)
-	AppendEntries2DPrintf(funct, "args: %v at %v to %v\n", args, rf.me, server)
-	AppendEntries2DPrintf(funct, "log: %v at %v \n", rf.log, rf.me)
+	rf.appendEntries2DPrintf(funct, "sendAppendEntries(): args: %v at %v to %v\n", args, rf.me, server)
+	rf.appendEntries2DPrintf(funct, "sendAppendEntries(): log: %v at %v \n", rf.log, rf.me)
 	// targetServer := rf.peers[server]
 	rf.unlockMu()
 	reply := AppendEntriesReply{}
@@ -174,14 +173,14 @@ func (rf *Raft) harvestAppendEntriesReply(issuedIndex int, sendReplyChan chan Ap
 
 		if reply.Success || reply.HigherTerm || hasHigherIndex || rf.killed() || !isLeader {
 			rf.unlockMu()
-			AppendEntriesDPrintf("reply from server %v: %v waiting for sending", reply.Server, reply)
+			rf.appendEntriesDPrintf("harvestAppendEntriesReply(): reply from server %v: %v waiting for sending", reply.Server, reply)
 			select {
 			case sendReplyChan <- reply:
-				AppendEntriesDPrintf("reply from server %v sends to replyChan", reply.Server)
+				rf.appendEntriesDPrintf("harvestAppendEntriesReply(): reply from server %v sends to replyChan", reply.Server)
 			case <-stopChan:
 
 				rf.lockMu("2 harvestAppendEntriesReply() with issuedIndex: %v\n", issuedIndex)
-				AppendEntriesDPrintf("reply from server %v sends to trailing", reply.Server)
+				rf.appendEntriesDPrintf("harvestAppendEntriesReply(): reply from server %v sends to trailing", reply.Server)
 				if reply.Success && rf.currentTerm == reply.Term && rf.role == LEADER && !rf.killed() {
 					rf.unlockMu()
 					rf.trailingReplyChan <- reply
