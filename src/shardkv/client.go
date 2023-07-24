@@ -3,27 +3,37 @@ package shardkv
 //
 // client code to talk to a sharded key/value service.
 //
-// the client first talks to the shardctrler to find out
+// the client first talks to the shardController to find out
 // the assignment of shards (keys) to groups, and then
 // talks to the group that holds the key's shard.
 //
 
-import "6.5840/labrpc"
-import "crypto/rand"
-import "math/big"
-import "6.5840/shardctrler"
-import "time"
+import (
+	"crypto/rand"
+	"log"
+	"math/big"
+	mathRand "math/rand"
+	"time"
+
+	"6.5840/labrpc"
+	"6.5840/shardController"
+)
 
 // which shard is a key in?
 // please use this function,
 // and please do not change it.
+/*
+need to use a string hashing function
+*/
+
 func key2shard(key string) int {
-	shard := 0
-	if len(key) > 0 {
-		shard = int(key[0])
+	hashCode := 0
+	hashSize := shardController.NShards
+	for _, c := range key {
+		hashCode = (int(c)*33 + hashCode) % hashSize
 	}
-	shard %= shardctrler.NShards
-	return shard
+	hashCode = hashCode % hashSize
+	return hashCode
 }
 
 func nrand() int64 {
@@ -33,97 +43,171 @@ func nrand() int64 {
 	return x
 }
 
-type Clerk struct {
-	sm       *shardctrler.Clerk
-	config   shardctrler.Config
-	make_end func(string) *labrpc.ClientEnd
-	// You will have to modify this struct.
-}
-
 // the tester calls MakeClerk.
 //
-// ctrlers[] is needed to call shardctrler.MakeClerk().
+// ctrlers[] is needed to call shardController.MakeClerk().
 //
 // make_end(servername) turns a server name from a
 // Config.Groups[gid][i] into a labrpc.ClientEnd on which you can
 // send RPCs.
 func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.ClientEnd) *Clerk {
+	tempDPrintf("MakeClerk() is called()\n")
 	ck := new(Clerk)
-	ck.sm = shardctrler.MakeClerk(ctrlers)
+	ck.clerkId = nrand()
+	ck.seqNum = 1
+	ck.sc = shardController.MakeClerk(ctrlers)
 	ck.make_end = make_end
-	// You'll have to add code here.
+	tempDPrintf("MakeClerk() finished with ck: %v\n", ck)
 	return ck
 }
 
-// fetch the current value for a key.
-// returns "" if the key does not exist.
-// keeps trying forever in the face of all other errors.
-// You will have to modify this function.
+/*
+the server receives configNum == 0?
+*/
+
 func (ck *Clerk) Get(key string) string {
-	args := GetArgs{}
-	args.Key = key
+	ck.seqNum++
+	args := RequestArgs{
+		ClerkId: ck.clerkId,
+		SeqNum:  ck.seqNum,
 
-	for {
-		shard := key2shard(key)
-		gid := ck.config.Shards[shard]
-		if servers, ok := ck.config.Groups[gid]; ok {
-			// try each server for the shard.
-			for si := 0; si < len(servers); si++ {
-				srv := ck.make_end(servers[si])
-				var reply GetReply
-				ok := srv.Call("ShardKV.Get", &args, &reply)
-				if ok && (reply.Err == OK || reply.Err == ErrNoKey) {
-					return reply.Value
-				}
-				if ok && (reply.Err == ErrWrongGroup) {
-					break
-				}
-				// ... not ok, or ErrWrongLeader
-			}
-		}
-		time.Sleep(100 * time.Millisecond)
-		// ask controler for the latest configuration.
-		ck.config = ck.sm.Query(-1)
+		Shard:     key2shard(key),
+		Operation: GET,
+		Key:       key,
 	}
-
-	return ""
-}
-
-// shared by Put and Append.
-// You will have to modify this function.
-func (ck *Clerk) PutAppend(key string, value string, op string) {
-	args := PutAppendArgs{}
-	args.Key = key
-	args.Value = value
-	args.Op = op
-
-
-	for {
-		shard := key2shard(key)
-		gid := ck.config.Shards[shard]
-		if servers, ok := ck.config.Groups[gid]; ok {
-			for si := 0; si < len(servers); si++ {
-				srv := ck.make_end(servers[si])
-				var reply PutAppendReply
-				ok := srv.Call("ShardKV.PutAppend", &args, &reply)
-				if ok && reply.Err == OK {
-					return
-				}
-				if ok && reply.Err == ErrWrongGroup {
-					break
-				}
-				// ... not ok, or ErrWrongLeader
-			}
-		}
-		time.Sleep(100 * time.Millisecond)
-		// ask controler for the latest configuration.
-		ck.config = ck.sm.Query(-1)
-	}
+	reply := ck.sendRequest(&args)
+	return reply.Value
 }
 
 func (ck *Clerk) Put(key string, value string) {
-	ck.PutAppend(key, value, "Put")
+	ck.seqNum++
+	args := RequestArgs{
+		ClerkId: ck.clerkId,
+		SeqNum:  ck.seqNum,
+
+		Shard:     key2shard(key),
+		Operation: PUT,
+		Key:       key,
+		Value:     value,
+	}
+	ck.sendRequest(&args)
 }
 func (ck *Clerk) Append(key string, value string) {
-	ck.PutAppend(key, value, "Append")
+	ck.seqNum++
+	args := RequestArgs{
+		ClerkId: ck.clerkId,
+		SeqNum:  ck.seqNum,
+
+		Shard:     key2shard(key),
+		Operation: APPEND,
+		Key:       key,
+		Value:     value,
+	}
+	ck.sendRequest(&args)
+}
+
+func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
+	replyChan := make(chan RequestReply)
+	go ck.sendRequestWithChan(args, replyChan)
+	var reply RequestReply
+	quit := false
+	for !quit {
+		select {
+		case reply = <-replyChan:
+			quit = true
+		case <-time.After(1 * time.Second):
+			ck.mu.Lock()
+			tempDPrintf("sendRequest() clerk's request hasn't finished for args: %v", args)
+			ck.mu.Unlock()
+		}
+	}
+	return &reply
+}
+
+/*
+This function sends request to kvServer, and handles retries
+The ConfigNum is not set in the request, since it may need to query the controller and change
+*/
+func (ck *Clerk) sendRequestWithChan(args *RequestArgs, replyChan chan RequestReply) {
+	tempDPrintf("sendRequestWithChan() Clerk: %v is called with %v\n", ck.clerkId, args)
+	for ck.config.Num == 0 {
+		// init config
+		ck.config = ck.sc.Query(-1)
+		if ck.config.Num == 0 {
+			time.Sleep(time.Duration(CHECKCONFIGTIMEOUT) * time.Millisecond)
+		}
+	}
+	var reply RequestReply
+	quit := false
+	for !quit {
+		gid := ck.config.Shards[args.Shard]
+		ck.mu.Lock()
+		args.ConfigNum = ck.config.Num
+		ck.mu.Unlock()
+		var servers []*labrpc.ClientEnd
+		if servernames, ok := ck.config.Groups[gid]; ok {
+			for si := 0; si < len(servernames); si++ {
+				srv := ck.make_end(servernames[si])
+				servers = append(servers, srv)
+			}
+		} else {
+			log.Fatalf("sendRequestWithChan() Clerk Config %v doesn't have gid: %v\n", ck.config, gid)
+		}
+
+		tempDPrintf("sendRequestWithChan() sends to group: %v, receives args: %v with config: %v\n", gid, args, ck.config)
+		reply = ck.sendToServers(args, servers)
+		if !reply.Succeeded {
+			// ask controler for the latest configuration.
+			ck.config = ck.sc.Query(-1)
+			tempDPrintf("sendRequestWithChan() Args: %v, sends to the wrong group: %v, get reply: %v, new config: %v\n", args, gid, reply, ck.config)
+		} else {
+			// Succeeded
+			quit = true
+		}
+
+	}
+	tempDPrintf("sendRequestWithChan() Clerk: %v, finished with %v for args: %v\n", ck.clerkId, reply, args)
+	replyChan <- reply
+}
+
+/*
+this function is identical to kvraft sendRequest,
+it sends request to the servers in a group
+when returns, it must be the case that the request is succeeded
+or the request sends to a wrong group
+*/
+func (ck *Clerk) sendToServers(args *RequestArgs, servers []*labrpc.ClientEnd) RequestReply {
+	var reply RequestReply
+	for server := 0; server < len(servers); server++ {
+		tempReply := RequestReply{}
+		tempDPrintf("sendToServers() calls server ShardKV.RequestHandler: %v, with args: %v\n", server, args)
+		ok := servers[server].Call("ShardKV.RequestHandler", args, &tempReply)
+		tempDPrintf("sendToServers() sent to %v, got tempReply: %v for args: %v\n", server, tempReply, args)
+		if !ok {
+			// failed server or network disconnection
+			tempDPrintf("sendToServers() sent to %v, got tempReply: %v for args: %v got disconnected\n", server, tempReply, args)
+		}
+
+		if tempReply.WrongGroup || tempReply.Succeeded {
+			// contact wrong group or
+			// the raft server commits and kvServer applies
+			reply = tempReply
+			break
+		} else if tempReply.WaitForUpdate {
+			// the server is a leader server, but the server hasn't updated the config to args.ConfigNum yet
+			time.Sleep(time.Duration(CHECKCONFIGTIMEOUT) * time.Millisecond)
+			server--
+		} else {
+			// contact a non-leader server
+			// or a leader server with size too large
+			if tempReply.SizeExceeded {
+				log.Fatalf("sendToServers() with args: %v, command is too large, max allowed command size is %v\n", args, MAXKVCOMMANDSIZE)
+			}
+			tempDPrintf("sendToServers() sent to leader %v, got tempReply: %v for args: %v not successful\n", server, tempReply, args)
+			server = mathRand.Intn(len(servers))
+		}
+		tempDPrintf("sendToServers() finishes server ShardKV.RequestHandler: %v, for args: %v with reply: %v\n", server, args, reply)
+	}
+	tempDPrintf("sendToServers() finishes with %v\n", reply)
+	return reply
 }

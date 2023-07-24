@@ -10,8 +10,9 @@ func (rf *Raft) GetState() (int, bool) {
 	// Your code here (2A).
 	// currentTerm := atomic.LoadUint64(&rf.currentTerm)
 	// role := atomic.LoadInt32(&rf.role)
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+
+	rf.lockMu("GetState()")
+	defer rf.unlockMu()
 	currentTerm := rf.currentTerm
 	role := rf.role
 	return currentTerm, role == LEADER
@@ -30,10 +31,6 @@ should call killed() to check whether it should stop.
 */
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
-	// go func() {
-	// 	time.Sleep(5 * time.Millisecond)
-	// 	close(rf.orderedDeliveryChan)
-	// }()
 }
 
 func (rf *Raft) killed() bool {
@@ -41,43 +38,20 @@ func (rf *Raft) killed() bool {
 	return z == 1
 }
 
-// func (rf *Raft) IncrementLastApplied(old int) {
-// 	// atomic.AddInt32(&rf.lastApplied, 1)
-// 	// rf.mu.Lock()
-// 	// if rf.lastApplied == int32(old) {
-// 	// 	rf.lastApplied++
-// 	// }
-// 	// rf.mu.Unlock()
-// 	atomic.CompareAndSwapInt32(&rf.lastApplied, int32(old), int32(old+1))
-
-// }
-
-// func (rf *Raft) GetLastApplied() int32 {
-// 	z := atomic.LoadInt32(&rf.lastApplied)
-// 	// rf.mu.Lock()
-// 	// z := rf.lastApplied
-// 	// rf.mu.Unlock()
-// 	return z
-// }
-
 func (rf *Raft) isLeader() bool {
-	// ans := atomic.LoadInt32(&rf.role)
-	// return ans == LEADER
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+	rf.lockMu("isLeader()")
+	defer rf.unlockMu()
 	ans := rf.role
 	return ans == LEADER
 }
 
-func (rf *Raft) GetLeaderId() (int, int, int) {
-	// ans := atomic.LoadInt32(&rf.role)
-	// return ans == LEADER
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	ans := rf.currentLeader
-	votedFor := rf.votedFor
-	term := rf.currentTerm
-	return ans, votedFor, term
+func (rf *Raft) GetVotedFor() int {
+	votedFor := atomic.LoadInt32(&rf.votedFor)
+	return int(votedFor)
+}
+
+func (rf *Raft) setVotedFor(votedFor int) {
+	atomic.StoreInt32(&rf.votedFor, int32(votedFor))
 }
 
 func (rf *Raft) IsValidLeader() bool {
@@ -105,7 +79,7 @@ func (rf *Raft) onReceiveHigherTerm(term int) int {
 	rf.currentTerm = term
 	rf.role = FOLLOWER
 	// set it to -1 is not a problem, since this leader did not receive vote from this server
-	rf.votedFor = -1
+	rf.setVotedFor(-1)
 	rf.currentLeader = -1
 	rf.currentAppended = 0
 

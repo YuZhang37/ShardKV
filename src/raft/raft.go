@@ -1,7 +1,7 @@
 package raft
 
 import (
-	"log"
+	"fmt"
 	"unsafe"
 
 	"6.5840/labgob"
@@ -24,9 +24,11 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	labgob.Register(Noop{})
 	// no lock is need at initialization
 	rf := &Raft{}
+	rf.lockChan = nil
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
+	rf.gid = -1
 	rf.dead = 0
 	rf.applyCh = applyCh
 
@@ -37,14 +39,18 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	} else {
 		rf.maxRaftState = -1
 	}
+	if len(opts) > 1 {
+		rf.gid = opts[1].(int)
+	}
 
-	if rf.maxRaftState != -1 {
+	if rf.maxRaftState >= 0 {
 		rf.maxLogSize = rf.maxRaftState - RESERVESPACE
 	} else {
-		rf.maxLogSize = -1
+		rf.maxLogSize = rf.maxRaftState
 	}
 	rf.commitIndex = 0
 	rf.lastApplied = 0
+	rf.appliedLockChan = nil
 
 	// persistent states
 	rf.currentTerm = 0
@@ -79,10 +85,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// initialize from state persisted before a crash
 	recover := rf.readPersist()
 	if !recover {
-		PersistenceDPrintf("Not previous state to recover from, persist initialization\n")
+		rf.persistenceDPrintf("Make(): No previous state to recover from, persist initialization\n")
 		rf.persistState("server %v initialization", rf.me)
 	} else {
-		PersistenceDPrintf("Recover form previous state\n")
+		rf.persistenceDPrintf("Make(): Recover form previous state\n")
 	}
 
 	// start ticker goroutine to start elections
@@ -99,20 +105,21 @@ if log exceeds maxLogSize and can't reduce size by snapshot()
 return -1, -1, true. In this case, start won't return immediately
 */
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+
+	rf.lockMu("Start() with command: %v\n", command)
+	defer rf.unlockMu()
 	index := -1
 	term := -1
 	isLeader := false
-	KVStoreDPrintf("Server: %v, Start() is called with %v\n", rf.me, command)
-	defer KVStoreDPrintf("Server: %v, Start() finished %v with index: %v, term: %v, isLeader: %v\n", rf.me, command, index, term, isLeader)
+	rf.kvStoreDPrintf("Start(): called with %v\n", command)
+	defer rf.kvStoreDPrintf("Start(): finished %v with index: %v, term: %v, isLeader: %v\n", command, index, term, isLeader)
 	if rf.killed() || rf.role != LEADER {
-		AppendEntriesDPrintf("Command %v sends to %v, which is not a leader, the leader is %v\n", command, rf.me, rf.currentLeader)
+		rf.appendEntriesDPrintf("Start(): Command %v sends to %v, which is not a leader, the leader is %v\n", command, rf.me, rf.currentLeader)
 		return index, term, isLeader
 	}
 
-	AppendEntriesDPrintf("Command %v sends to %v, which is a leader for term: %v\n", command, rf.me, rf.currentTerm)
-	AppendEntriesDPrintf("Start processing...\n")
+	rf.appendEntriesDPrintf("Start(): Command %v sends to %v, which is a leader for term: %v\n", command, rf.me, rf.currentTerm)
+	rf.appendEntriesDPrintf("Start(): Start processing...\n")
 
 	term = rf.currentTerm
 	isLeader = true
@@ -128,32 +135,62 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Command: command,
 	}
 	if unsafe.Sizeof(entry) >= uintptr(MAXLOGENTRYSIZE) {
-		log.Fatalf("***************** entry: %v has size of %v which exceeds the max log entry size: %v ***********", entry, unsafe.Sizeof(entry), MAXLOGENTRYSIZE)
+		rf.logFatal("Start(): entry: %v has size of %v which exceeds the max log entry size: %v ", entry, unsafe.Sizeof(entry), MAXLOGENTRYSIZE)
 	}
 	newLog := append(rf.log, entry)
 	size := rf.getLogSize(newLog)
-	for rf.maxLogSize != -1 && size >= rf.maxLogSize {
+	if rf.maxLogSize >= 0 && size >= rf.maxLogSize {
 		// snapshot enabled
-		rf.logRaftState("from leader: before signalSnapshot")
+		rf.logRaftState("Start(): from leader before signalSnapshot +0")
 		rf.logRaftState2(size)
 		if rf.commitIndex > rf.snapshotLastIndex {
-			// there are log entries to compact
+			// there are log entries to apply
+			rf.snapshotDPrintf("Start(): calls insideApplyCommand...")
 			rf.insideApplyCommand(rf.commitIndex, true)
-			rf.signalSnapshot()
-			rf.persistState("server %v Start() snapshots for entry %v", rf.me, entry)
-			rf.logRaftState("from leader: after signalSnapshot")
-			newLog = append(rf.log, entry)
-			size = rf.getLogSize(newLog)
+			rf.snapshotDPrintf("Start(): finishes insideApplyCommand...")
 		}
+		// it's possible some log entries have been applied, but not be taken snapshot
+		rf.snapshotDPrintf("Start(): calls signalSnapshot...")
+		rf.signalSnapshot()
+		rf.snapshotDPrintf("Start(): finishes signalSnapshot...")
+		rf.persistState("Start(): snapshots for entry %v", entry)
+		rf.logRaftState("Start(): from leader after signalSnapshot +0")
+		newLog = append(rf.log, entry)
+		size = rf.getLogSize(newLog)
 		if size >= rf.maxLogSize {
 			index = -1
 			term = -1
 			return index, term, isLeader
 		}
 	}
+	if rf.maxLogSize == -2 {
+		// must apply the command first and take a snapshot if there is log entry
+		rf.logRaftState("Start(): from leader before signalSnapshot -2")
+		rf.logRaftState2(size)
+		if len(rf.log) > 0 {
+			if rf.commitIndex > rf.snapshotLastIndex {
+				// there are log entries to apply
+				rf.snapshotDPrintf("Start(): calls insideApplyCommand...")
+				rf.insideApplyCommand(rf.commitIndex, true)
+				rf.snapshotDPrintf("Start(): finishes insideApplyCommand...")
+			}
+			rf.snapshotDPrintf("Start(): calls signalSnapshot...")
+			rf.signalSnapshot()
+			rf.snapshotDPrintf("SStart(): finishes signalSnapshot...")
+			rf.persistState("Start(): snapshots for entry %v", entry)
+			rf.logRaftState("from leader: after signalSnapshot -2")
+			newLog = append(rf.log, entry)
+			if len(rf.log) > 0 {
+				index = -1
+				term = -1
+				return index, term, isLeader
+			}
+		}
+	}
 	rf.log = newLog
-	rf.persistState("server %v Start() appends entry %v", rf.me, entry)
-	AppendEntriesDPrintf("Command %v is appended on %v at index of %v\n", command, rf.me, len(rf.log))
+	rf.logRaftStateForInstallSnapshot(fmt.Sprintf("leader appends entry: %v ", entry))
+	rf.persistState("Start(): appends entry %v", entry)
+	rf.appendEntriesDPrintf("Command %v is appended on %v at index of %v\n", command, rf.me, len(rf.log))
 
 	go rf.reachConsensus(entry.Index)
 	return index, term, isLeader
@@ -161,7 +198,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 // rf.mu is held
 func (rf *Raft) commitNoop() {
-	KVStoreDPrintf("Server: %v commitNoop() gets running..\n", rf.me)
+	rf.kvStoreDPrintf("commitNoop(): gets running..\n")
 	noop := Noop{
 		Operation: NOOP,
 	}
@@ -182,9 +219,9 @@ func (rf *Raft) commitNoop() {
 		Command: noop,
 	}
 	rf.log = append(rf.log, entry)
-	rf.persistState("server %v commitNoop() appends entry %v", rf.me, entry)
+	rf.persistState("commitNoop(): appends entry %v", entry)
 	go rf.reachConsensus(entry.Index)
-	KVStoreDPrintf("Server: %v commitNoop() at index: %v, entry: %v, log: %v, commitIndex: %v\n", rf.me, index, entry, rf.log, rf.commitIndex)
+	rf.kvStoreDPrintf("commitNoop(): at index: %v, entry: %v, log: %v, commitIndex: %v\n", index, entry, rf.log, rf.commitIndex)
 }
 
 /*

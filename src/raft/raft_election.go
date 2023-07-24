@@ -7,8 +7,9 @@ import (
 
 // RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+
+	rf.lockMu("RequestVote(): with args: %v\n", args)
+	defer rf.unlockMu()
 	reply.Server = rf.me
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
@@ -28,24 +29,24 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	up_to_date := true
 	if logSize > 0 {
 		up_to_date = args.LastLogTerm > lastLogTerm || (args.LastLogTerm == lastLogTerm && args.LastLogIndex >= logSize)
-		ElectionDPrintf(" %v up-to-date as %v: %v\n", args.CandidateId, rf.me, up_to_date)
+		rf.electionDPrintf("RequestVote(): %v up-to-date as %v: %v\n", args.CandidateId, rf.me, up_to_date)
 	}
 
-	if up_to_date && (rf.votedFor == -1 || rf.votedFor == args.CandidateId) {
-		rf.votedFor = args.CandidateId
+	if up_to_date && (int(rf.votedFor) == -1 || int(rf.votedFor) == args.CandidateId) {
+		rf.setVotedFor(args.CandidateId)
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = true
 		rf.msgReceived = true
 	} else {
 		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
-		ElectionDPrintf(" %v already votes for %v at term %v\n", rf.me, rf.votedFor, rf.currentTerm)
+		rf.electionDPrintf("RequestVote(): %v already votes for %v at term %v\n", rf.me, rf.votedFor, rf.currentTerm)
 	}
 	/*
 		before the reply is sent back to the candidate,
 		if the server crashes, it behaves just like the server never receives the request.
 	*/
-	rf.persistState("server %v responds to request vote from %v on term %v", rf.me, args.CandidateId, args.Term)
+	rf.persistState("RequestVote(): responds to request vote from %v on term %v", args.CandidateId, args.Term)
 }
 
 /*
@@ -81,23 +82,23 @@ func (rf *Raft) ticker() {
 		randomTime := rand.Intn(rf.randomRange)
 		time.Sleep(time.Duration((randomTime + rf.eleTimeOut)) *
 			time.Millisecond)
-		rf.mu.Lock()
+
+		rf.lockMu("ticker()")
 		if rf.role == LEADER {
-			rf.mu.Unlock()
+			rf.unlockMu()
 			continue
 		}
 		if rf.msgReceived {
 			rf.msgReceived = false
-			rf.mu.Unlock()
+			rf.unlockMu()
 			continue
 		}
 		// follower or candidate, not receiving msg
 		// rf.msgReceived remain false to allow re-election
 		go rf.Election()
 
-		ElectionDPrintf("%v timeout: %v at term %v\n", rf.me, randomTime+rf.eleTimeOut, rf.currentTerm)
-		ElectionDPrintf("\n%v will start election at term %v\n", rf.me, rf.currentTerm+1)
-		rf.mu.Unlock()
+		rf.electionDPrintf("sendRequestVote(): timeout: %v at term %v\n %v will start election at term %v\n", randomTime+rf.eleTimeOut, rf.currentTerm, rf.me, rf.currentTerm+1)
+		rf.unlockMu()
 	}
 }
 
@@ -128,22 +129,22 @@ ELection function is long, may need to refactor to small pieces
 
 func (rf *Raft) Election() {
 
-	rf.mu.Lock()
+	rf.lockMu("1 Election()")
 	/*
 		between detecting msgReceived false and Election(), there can be other candidates request to vote, and the server votes for that candidate, updating currentTerm and votedFor
 	*/
 	if rf.msgReceived {
-		rf.mu.Unlock()
+		rf.unlockMu()
 		return
 	}
 	rf.upgradeToCandidate()
-	rf.persistState("server %v leader election", rf.me)
+	rf.persistState("Election(): leader election")
 	// not necessary to persist here, if the server crashes, it can start over the election with previous term just like crash before starting election
-	rf.mu.Unlock()
+	rf.unlockMu()
 
 	countVotes, reply := rf.sendAndReceiveVotes()
 
-	rf.mu.Lock()
+	rf.lockMu("2 Election()")
 	/*
 		if role is not candidate, it means some higher term candidate
 		has requested vote from this server, and the server grants the vote
@@ -154,18 +155,18 @@ func (rf *Raft) Election() {
 	} else {
 		if reply.Term > rf.currentTerm {
 			originalTerm := rf.onReceiveHigherTerm(reply.Term)
-			rf.persistState("server %v leader election has higher term reply: %v, original term: %v", rf.me, reply.Term, originalTerm)
+			rf.persistState("Election(): leader election has higher term reply: %v, original term: %v", reply.Term, originalTerm)
 		}
-		ElectionDPrintf("%v failed the election at term %v\n", rf.me, rf.currentTerm)
+		rf.electionDPrintf("Election(): %v failed the election at term %v\n", rf.me, rf.currentTerm)
 	}
 
-	rf.mu.Unlock()
+	rf.unlockMu()
 }
 
 func (rf *Raft) upgradeToCandidate() {
 	// change all relevant states to be candidate
 	rf.currentTerm++
-	rf.votedFor = rf.me
+	rf.setVotedFor(rf.me)
 	rf.role = CANDIDATE
 	rf.currentLeader = -1
 	rf.currentAppended = 0
@@ -202,10 +203,7 @@ func (rf *Raft) upgradeToLeader() {
 
 	rf.commitNoop()
 
-	ElectionDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
-	TestDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
-	KVStoreDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
-	ShardControllerDPrintf("%v wins the election at term %v\n", rf.me, rf.currentTerm)
+	rf.electionWinsDPrintf("Election(): wins the election at term %v\n", rf.currentTerm)
 }
 
 func (rf *Raft) getRequestVoteArgs() RequestVoteArgs {
@@ -229,10 +227,11 @@ func (rf *Raft) getRequestVoteArgs() RequestVoteArgs {
 
 // return granted vote count and last reply
 func (rf *Raft) sendAndReceiveVotes() (int, RequestVoteReply) {
-	rf.mu.Lock()
+
+	rf.lockMu("sendAndReceiveVotes()")
 	args := rf.getRequestVoteArgs()
 	numOfPeers := len(rf.peers)
-	rf.mu.Unlock()
+	rf.unlockMu()
 	// receive vote replies from all sending goroutines
 	ch := make(chan RequestVoteReply)
 	for i := 0; i < numOfPeers; i++ {
@@ -253,10 +252,9 @@ func (rf *Raft) sendAndReceiveVotes() (int, RequestVoteReply) {
 		}
 		if reply.VoteGranted {
 			countVotes++
-			TestDPrintf("%v grants vote to %v at term %v\n", reply.Server, rf.me, args.Term)
-			ElectionDPrintf("%v grants vote to %v at term %v\n", reply.Server, rf.me, args.Term)
+			rf.electionDPrintf("sendAndReceiveVotes(): %v grants vote to %v at term %v\n", reply.Server, rf.me, args.Term)
 		} else {
-			ElectionDPrintf("%v doesn't grant vote to %v at term %v\n", reply.Server, rf.me, args.Term)
+			rf.electionDPrintf("sendAndReceiveVotes(): %v doesn't grant vote to %v at term %v\n", reply.Server, rf.me, args.Term)
 		}
 		if countVotes >= numOfPeers/2+1 {
 			break
@@ -270,6 +268,6 @@ func (rf *Raft) sendAndReceiveVotes() (int, RequestVoteReply) {
 		}
 	}(numOfPeers - 1 - i - 1)
 
-	ElectionDPrintf("total votes: %v to %v at term %v\n", countVotes, rf.me, args.Term)
+	rf.electionDPrintf("sendAndReceiveVotes(): total votes: %v to %v at term %v\n", countVotes, rf.me, args.Term)
 	return countVotes, reply
 }

@@ -27,7 +27,7 @@ func (sc *ShardController) checkDupServernamesForJoin(command *ControllerCommand
 
 // check if gid or servernames exist in current config:
 // return pass or not
-func (sc *ShardController) checkExistsForJoin(nextConfig *Config, command *ControllerCommand, reply *ControllerReply) bool {
+func (sc *ShardController) checkExistsForJoin(nextConfig *innerConfig, command *ControllerCommand, reply *ControllerReply) bool {
 	for gid, servers := range command.JoinedGroups {
 		if _, exists := nextConfig.Groups[gid]; exists {
 			reply.ErrorCode = JOIN_GIDEXISTS
@@ -45,7 +45,7 @@ func (sc *ShardController) checkExistsForJoin(nextConfig *Config, command *Contr
 	return true
 }
 
-func (sc *ShardController) addToConfig(config *Config, joinedGroups map[int][]string) {
+func (sc *ShardController) addToConfig(config *innerConfig, joinedGroups map[int][]string) {
 
 	joinedGIDs := sc.sortedGIDs(joinedGroups)
 
@@ -99,7 +99,7 @@ func (sc *ShardController) addToConfig(config *Config, joinedGroups map[int][]st
 /*
 return a list of freed shards
 */
-func (sc *ShardController) collectFreedShardsForJoin(config *Config, tShards int, rShards int) []int {
+func (sc *ShardController) collectFreedShardsForJoin(config *innerConfig, tShards int, rShards int) []int {
 	freedShards := make([]int, 0)
 	// collect shards from init case
 	for shard, gid := range config.Shards {
@@ -152,7 +152,7 @@ func (sc *ShardController) removeDupGIDsForLeave(command *ControllerCommand) {
 	command.LeaveGIDs = dedupedGIDs
 }
 
-func (sc *ShardController) checkExistsForLeave(nextConfig *Config, command *ControllerCommand, reply *ControllerReply) bool {
+func (sc *ShardController) checkExistsForLeave(nextConfig *innerConfig, command *ControllerCommand, reply *ControllerReply) bool {
 	for _, gid := range command.LeaveGIDs {
 		if _, exists := nextConfig.Groups[gid]; !exists {
 			reply.ErrorCode = LEAVE_GIDNOTEXISTS
@@ -163,7 +163,7 @@ func (sc *ShardController) checkExistsForLeave(nextConfig *Config, command *Cont
 	return true
 }
 
-func (sc *ShardController) removeFromConfig(config *Config, leaveGIDs []int) {
+func (sc *ShardController) removeFromConfig(config *innerConfig, leaveGIDs []int) {
 	freedShards := sc.collectFreedShardsAndLeaveGIDs(config, leaveGIDs)
 
 	tShards := NShards / len(config.Groups)
@@ -197,7 +197,7 @@ func (sc *ShardController) removeFromConfig(config *Config, leaveGIDs []int) {
 	sc.tempDPrintf("After proccessing Leave %v, Got freedShards: %v", leaveGIDs, freedShards)
 }
 
-func (sc *ShardController) collectFreedShardsAndLeaveGIDs(config *Config, leaveGIDs []int) []int {
+func (sc *ShardController) collectFreedShardsAndLeaveGIDs(config *innerConfig, leaveGIDs []int) []int {
 	freedShards := make([]int, 0)
 
 	leaveGIDMap := make(map[int]bool, 0)
@@ -234,7 +234,7 @@ works for initial case with group 0
 after move, the balanced pattern is broken,
 join and leave will rebalance the pattern
 */
-func (sc *ShardController) moveShard(config *Config, movedShard int, movedGID int) {
+func (sc *ShardController) moveShard(config *innerConfig, movedShard int, movedGID int) {
 	config.Moved = true
 	originalGroupID := config.Shards[movedShard]
 	config.Shards[movedShard] = movedGID
@@ -255,7 +255,7 @@ func (sc *ShardController) moveShard(config *Config, movedShard int, movedGID in
 }
 
 // to remove the effect of move
-func (sc *ShardController) balancePattern(config *Config) {
+func (sc *ShardController) balancePattern(config *innerConfig) {
 	if !config.Moved {
 		return
 	}

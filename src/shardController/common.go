@@ -48,6 +48,8 @@ type Clerk struct {
 	clerkId  int64
 	seqNum   int64
 	leaderId int
+
+	fromGroup int
 }
 
 /*********** end of definition for controller client *************/
@@ -55,7 +57,7 @@ type Clerk struct {
 /************** definition for controller server *************/
 
 // The number of shards.
-const NShards = 100
+const NShards = 10
 
 type GroupInfo struct {
 	GID        int
@@ -69,8 +71,18 @@ type Config struct {
 	Num    int              // config number
 	Shards [NShards]int     // shard -> gid
 	Groups map[int][]string // gid -> servers[]
+
+	AssignedShards []int
+}
+type innerConfig struct {
+	Num    int              // config number
+	Shards [NShards]int     // shard -> gid
+	Groups map[int][]string // gid -> servers[]
 	// servername -> group id
 	ServerNames map[string]int
+
+	// the shards which has no owners yet
+	UninitializedShards map[int]bool
 
 	// groups are sorted first in joined term, second in gid in ascending order
 	GroupInfos []GroupInfo
@@ -78,11 +90,12 @@ type Config struct {
 	Operation  string
 }
 type ShardController struct {
-	mu      sync.Mutex
-	dead    int32 // set by Kill()
-	me      int
-	rf      *raft.Raft
-	applyCh chan raft.ApplyMsg
+	mu       sync.Mutex
+	lockChan chan int
+	dead     int32 // set by Kill()
+	me       int
+	rf       *raft.Raft
+	applyCh  chan raft.ApplyMsg
 	// snapshot if log grows this big
 	maxRaftState int // persist
 
@@ -95,11 +108,12 @@ type ShardController struct {
 
 	// 0 is the initial config
 	// indexed by config num
-	configs []Config // persist
+	configs []innerConfig // persist
 }
 
 type ControllerCommand struct {
 	ClerkId      int64
+	FromGroup    int
 	SeqNum       int64
 	Operation    string
 	JoinedGroups map[int][]string
@@ -115,6 +129,9 @@ type ControllerCommand struct {
 type ControllerRequestArgs struct {
 	ClerkId int64
 	SeqNum  int64
+
+	//the gid of the send group, -1 for clerk
+	FromGroup int
 
 	Operation string
 	// Join
@@ -133,6 +150,8 @@ type ControllerReply struct {
 	SeqNum   int64
 	LeaderId int
 
+	FromGroup int
+
 	// being committed or not
 	Succeeded bool
 	// set by requesthandler
@@ -142,6 +161,9 @@ type ControllerReply struct {
 	ErrorCode int
 	// join and leave
 	ErrorMessage string
+
+	// for group query request without assignment for shard initialization
+	NoCached bool
 }
 
 /************ end of clerk-controller RPC definition *************/

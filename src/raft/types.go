@@ -125,18 +125,23 @@ type SnapshotInfo struct {
 
 // A Go object implementing a single Raft peer.
 type Raft struct {
-	mu        sync.Mutex          // Lock to protect shared access to this peer's state
+	mu        sync.Mutex // Lock to protect shared access to this peer's state
+	lockChan  chan int
 	peers     []*labrpc.ClientEnd // RPC end points of all peers
 	persister *Persister          // Object to hold this peer's persisted state
 	me        int                 // this peer's index into peers[]
-	dead      int32               // set by Kill()
+	gid       int
+	dead      int32 // set by Kill()
 	applyCh   chan ApplyMsg
 
 	SignalSnapshot chan int
 	SnapshotChan   chan SnapshotInfo
 
+	// maxLogSize + reserved space, reserved space is for other metadata
 	maxRaftState int
-	maxLogSize   int
+	// -1 for no snapshot, -2 for no log entries before appending,
+	// 8*non-negative number is the maxLogSize
+	maxLogSize int
 
 	/*
 		states for all servers (log index)
@@ -153,7 +158,7 @@ type Raft struct {
 		every time currentTerm increments, votedFor needs to reset to -1
 		votedFor is maintained during the whole term, even when the leader is elected, which can avoid the election issued by a server on the same term.
 	*/
-	votedFor int
+	votedFor int32
 	log      []LogEntry
 
 	/*
@@ -227,6 +232,7 @@ type Raft struct {
 	// ordered command delivery
 	// lock across channel, may held for long, don't try to use this lock inside rf.mu
 	appliedLock         sync.Mutex
+	appliedLockChan     chan int
 	orderedDeliveryChan chan ApplyMsg
 	pendingMsg          map[int]ApplyMsg
 }

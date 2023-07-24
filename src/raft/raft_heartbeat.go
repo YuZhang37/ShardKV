@@ -26,10 +26,11 @@ func (rf *Raft) harvestHeartbeatReply(replyChan chan AppendEntriesReply) {
 	}
 	// only deals with replies with higher terms
 	if reply.HigherTerm {
-		rf.mu.Lock()
+
+		rf.lockMu("harvestHeartbeatReply()")
 		rf.msgReceived = false
 		originalTerm := rf.onReceiveHigherTerm(reply.Term)
 		rf.persistState("server %v heartbeat replies on %v with higher term: %v, original term: %v", rf.me, reply.Server, reply.Term, originalTerm)
-		rf.mu.Unlock()
+		rf.unlockMu()
 	}
 }
