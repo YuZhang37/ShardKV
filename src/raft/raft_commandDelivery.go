@@ -1,5 +1,7 @@
 package raft
 
+import "time"
+
 func (rf *Raft) ApplySnapshot() {
 
 	rf.lockMu("ApplySnapshot()")
@@ -96,7 +98,9 @@ func (rf *Raft) OrderedCommandDelivery() {
 			rf.lastApplied++
 			delete(rf.pendingMsg, nextApplied)
 			rf.applyCommandDPrintf("OrderedCommandDelivery():  applies index: %v.\n", msg.CommandIndex)
-			rf.applyCh <- msg
+			if !rf.sendMsgToChan(&msg) {
+				break
+			}
 			nextApplied = int(rf.lastApplied + 1)
 			msg, exists = rf.pendingMsg[nextApplied]
 			rf.applyCommandDPrintf("OrderedCommandDelivery(): msg: %v, exists: %v, pendingMsg: %v\n", msg, exists, rf.pendingMsg)
@@ -107,4 +111,17 @@ func (rf *Raft) OrderedCommandDelivery() {
 		rf.logRaftStateForInstallSnapshot("OrderedCommandDelivery()")
 		rf.unlockMu()
 	}
+}
+
+func (rf *Raft) sendMsgToChan(msg *ApplyMsg) bool {
+	for !rf.killed() {
+		select {
+		case rf.applyCh <- *msg:
+			rf.applyCommandDPrintf("sendMsgToChan() with msg: %v is sent to application\n", msg)
+			return true
+		case <-time.After(time.Duration(CHECKAPPLIEDTIMEOUT) * time.Millisecond):
+		}
+	}
+	rf.applyCommandDPrintf("sendMsgToChan() with msg: %v is killed\n", msg)
+	return true
 }
