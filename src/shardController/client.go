@@ -46,15 +46,15 @@ func MakeQueryClerk(servers []*labrpc.ClientEnd, opts ...interface{}) *Clerk {
 This function sends request to kvServer, and handles retries
 */
 func (ck *Clerk) sendRequest(args *ControllerRequestArgs) *ControllerReply {
-	TempDPrintf("sendRequest() is called with %v\n", args)
+	tempDPrintf("sendRequest() is called with %v\n", args)
 	var reply ControllerReply
 	quit := false
 	for !quit {
 		tempReply := ControllerReply{}
 		ok := ck.servers[ck.leaderId].Call("ShardController.RequestHandler", args, &tempReply)
-		TempDPrintf("sendRequest() sent to %v, got tempReply: %v for args: %v\n", ck.leaderId, tempReply, args)
+		tempDPrintf("sendRequest() sent to %v, got tempReply: %v for args: %v\n", ck.leaderId, tempReply, args)
 		if !ok {
-			TempDPrintf("sendRequest() sent to %v, got tempReply: %v for args: %v got disconnected\n", ck.leaderId, tempReply, args)
+			tempDPrintf("sendRequest() sent to %v, got tempReply: %v for args: %v got disconnected\n", ck.leaderId, tempReply, args)
 			// server failed or disconnected
 			ck.leaderId = mathRand.Intn(len(ck.servers))
 			continue
@@ -67,12 +67,12 @@ func (ck *Clerk) sendRequest(args *ControllerRequestArgs) *ControllerReply {
 			if tempReply.SizeExceeded {
 				log.Fatalf("command is too large, max allowed command size is %v\n", MAXCONTROLLERCOMMANDSIZE)
 			}
-			TempDPrintf("sendRequest() sent to leader %v, got tempReply: %v for args: %v not successful\n", ck.leaderId, tempReply, args)
+			tempDPrintf("sendRequest() sent to leader %v, got tempReply: %v for args: %v not successful\n", ck.leaderId, tempReply, args)
 			// the raft server or the kv server is killed or no longer the leader
 			ck.leaderId = mathRand.Intn(len(ck.servers))
 		}
 	}
-	TempDPrintf("sendRequest() finishes with %v\n", reply)
+	tempDPrintf("sendRequest() finishes with %v\n", reply)
 	return &reply
 }
 

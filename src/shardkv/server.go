@@ -39,7 +39,7 @@ import (
 // StartServer() must return quickly, so it should start goroutines
 // for any long-running work.
 func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxRaftState int, gid int, ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.ClientEnd) *ShardKV {
-	TempDPrintf("Start ShardKV Server: me: %v, maxRaftState: %v, gid: %v\n", me, maxRaftState, gid)
+	tempDPrintf("Start ShardKV Server: me: %v, maxRaftState: %v, gid: %v\n", me, maxRaftState, gid)
 	labgob.Register(ShardKVCommand{})
 	labgob.Register(ConfigUpdateCommand{})
 	labgob.Register(TransmitShardCommand{})

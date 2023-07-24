@@ -51,13 +51,13 @@ func nrand() int64 {
 // Config.Groups[gid][i] into a labrpc.ClientEnd on which you can
 // send RPCs.
 func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.ClientEnd) *Clerk {
-	TempDPrintf("MakeClerk() is called()\n")
+	tempDPrintf("MakeClerk() is called()\n")
 	ck := new(Clerk)
 	ck.clerkId = nrand()
 	ck.seqNum = 1
 	ck.sc = shardController.MakeClerk(ctrlers)
 	ck.make_end = make_end
-	TempDPrintf("MakeClerk() finished with ck: %v\n", ck)
+	tempDPrintf("MakeClerk() finished with ck: %v\n", ck)
 	return ck
 }
 
@@ -117,7 +117,7 @@ func (ck *Clerk) sendRequest(args *RequestArgs) *RequestReply {
 			quit = true
 		case <-time.After(1 * time.Second):
 			ck.mu.Lock()
-			TempDPrintf("sendRequest() clerk's request hasn't finished for args: %v", args)
+			tempDPrintf("sendRequest() clerk's request hasn't finished for args: %v", args)
 			ck.mu.Unlock()
 		}
 	}
@@ -129,7 +129,7 @@ This function sends request to kvServer, and handles retries
 The ConfigNum is not set in the request, since it may need to query the controller and change
 */
 func (ck *Clerk) sendRequestWithChan(args *RequestArgs, replyChan chan RequestReply) {
-	TempDPrintf("sendRequestWithChan() Clerk: %v is called with %v\n", ck.clerkId, args)
+	tempDPrintf("sendRequestWithChan() Clerk: %v is called with %v\n", ck.clerkId, args)
 	for ck.config.Num == 0 {
 		// init config
 		ck.config = ck.sc.Query(-1)
@@ -154,19 +154,19 @@ func (ck *Clerk) sendRequestWithChan(args *RequestArgs, replyChan chan RequestRe
 			log.Fatalf("sendRequestWithChan() Clerk Config %v doesn't have gid: %v\n", ck.config, gid)
 		}
 
-		TempDPrintf("sendRequestWithChan() sends to group: %v, receives args: %v with config: %v\n", gid, args, ck.config)
+		tempDPrintf("sendRequestWithChan() sends to group: %v, receives args: %v with config: %v\n", gid, args, ck.config)
 		reply = ck.sendToServers(args, servers)
 		if !reply.Succeeded {
 			// ask controler for the latest configuration.
 			ck.config = ck.sc.Query(-1)
-			TempDPrintf("sendRequestWithChan() Args: %v, sends to the wrong group: %v, get reply: %v, new config: %v\n", args, gid, reply, ck.config)
+			tempDPrintf("sendRequestWithChan() Args: %v, sends to the wrong group: %v, get reply: %v, new config: %v\n", args, gid, reply, ck.config)
 		} else {
 			// Succeeded
 			quit = true
 		}
 
 	}
-	TempDPrintf("sendRequestWithChan() Clerk: %v, finished with %v for args: %v\n", ck.clerkId, reply, args)
+	tempDPrintf("sendRequestWithChan() Clerk: %v, finished with %v for args: %v\n", ck.clerkId, reply, args)
 	replyChan <- reply
 }
 
@@ -180,12 +180,12 @@ func (ck *Clerk) sendToServers(args *RequestArgs, servers []*labrpc.ClientEnd) R
 	var reply RequestReply
 	for server := 0; server < len(servers); server++ {
 		tempReply := RequestReply{}
-		TempDPrintf("sendToServers() calls server ShardKV.RequestHandler: %v, with args: %v\n", server, args)
+		tempDPrintf("sendToServers() calls server ShardKV.RequestHandler: %v, with args: %v\n", server, args)
 		ok := servers[server].Call("ShardKV.RequestHandler", args, &tempReply)
-		TempDPrintf("sendToServers() sent to %v, got tempReply: %v for args: %v\n", server, tempReply, args)
+		tempDPrintf("sendToServers() sent to %v, got tempReply: %v for args: %v\n", server, tempReply, args)
 		if !ok {
 			// failed server or network disconnection
-			TempDPrintf("sendToServers() sent to %v, got tempReply: %v for args: %v got disconnected\n", server, tempReply, args)
+			tempDPrintf("sendToServers() sent to %v, got tempReply: %v for args: %v got disconnected\n", server, tempReply, args)
 		}
 
 		if tempReply.WrongGroup || tempReply.Succeeded {
@@ -203,11 +203,11 @@ func (ck *Clerk) sendToServers(args *RequestArgs, servers []*labrpc.ClientEnd) R
 			if tempReply.SizeExceeded {
 				log.Fatalf("sendToServers() with args: %v, command is too large, max allowed command size is %v\n", args, MAXKVCOMMANDSIZE)
 			}
-			TempDPrintf("sendToServers() sent to leader %v, got tempReply: %v for args: %v not successful\n", server, tempReply, args)
+			tempDPrintf("sendToServers() sent to leader %v, got tempReply: %v for args: %v not successful\n", server, tempReply, args)
 			server = mathRand.Intn(len(servers))
 		}
-		TempDPrintf("sendToServers() finishes server ShardKV.RequestHandler: %v, for args: %v with reply: %v\n", server, args, reply)
+		tempDPrintf("sendToServers() finishes server ShardKV.RequestHandler: %v, for args: %v with reply: %v\n", server, args, reply)
 	}
-	TempDPrintf("sendToServers() finishes with %v\n", reply)
+	tempDPrintf("sendToServers() finishes with %v\n", reply)
 	return reply
 }

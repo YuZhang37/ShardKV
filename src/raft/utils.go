@@ -22,18 +22,18 @@ const debugElectionWins = true
 const tempDebug = false
 const followerDebug = false
 
-const WatchLock = 1
+const watchLock = 1
 
 func (rf *Raft) lockMu(format string, a ...interface{}) {
 	rf.mu.Lock()
-	if WatchLock == 1 {
+	if watchLock == 1 {
 		rf.lockChan = make(chan int)
 		go rf.watchMuLock(format, a...)
 	}
 }
 
 func (rf *Raft) unlockMu() {
-	if WatchLock == 1 {
+	if watchLock == 1 {
 		rf.lockChan <- 1
 	}
 	rf.mu.Unlock()
@@ -54,14 +54,14 @@ func (rf *Raft) watchMuLock(format string, a ...interface{}) {
 
 func (rf *Raft) lockApplied(format string, a ...interface{}) {
 	rf.appliedLock.Lock()
-	if WatchLock == 1 {
+	if watchLock == 1 {
 		rf.appliedLockChan = make(chan int)
 		go rf.watchAppliedLock(format, a...)
 	}
 }
 
 func (rf *Raft) unlockApplied() {
-	if WatchLock == 1 {
+	if watchLock == 1 {
 		rf.appliedLockChan <- 1
 	}
 	rf.appliedLock.Unlock()

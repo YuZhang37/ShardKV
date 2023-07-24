@@ -6,27 +6,27 @@ import (
 	"time"
 )
 
-const TempDebug = false
-const MoveShardDebug = false
-const TransmitSenderDebug = false
-const TransmitHandlerDebug = false
-const SnapshotDebug = false
-const FollowerDebug = false
-const Temp2Debug = false
-const TestDebug = false
+const tempDebug = false
+const moveShardDebug = false
+const transmitSenderDebug = false
+const transmitHandlerDebug = false
+const snapshotDebug = false
+const followerDebug = false
+const temp2Debug = false
+const testDebug = false
 
-const WatchLock = 1
+const watchLock = 1
 
 func (skv *ShardKV) lockMu(format string, a ...interface{}) {
 	skv.mu.Lock()
-	if WatchLock == 1 {
+	if watchLock == 1 {
 		skv.lockChan = make(chan int)
 		go skv.watchMuLock(format, a...)
 	}
 }
 
 func (skv *ShardKV) unlockMu() {
-	if WatchLock == 1 {
+	if watchLock == 1 {
 		skv.lockChan <- 1
 	}
 	skv.mu.Unlock()
@@ -41,7 +41,7 @@ func (skv *ShardKV) watchMuLock(format string, a ...interface{}) {
 		case <-time.After(5 * time.Second):
 			votedFor := int(skv.rf.GetVotedFor())
 			prefix := fmt.Sprintf("MuLock: Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
-			if votedFor == skv.me || FollowerDebug {
+			if votedFor == skv.me || followerDebug {
 				log.Printf(prefix+"ShardKV testLock(): "+format+" is not unlocked\n", a...)
 			}
 		}
@@ -50,14 +50,14 @@ func (skv *ShardKV) watchMuLock(format string, a ...interface{}) {
 
 func (skv *ShardKV) lockShard(shard int, format string, a ...interface{}) {
 	skv.shardLocks[shard].Lock()
-	if WatchLock == 1 {
+	if watchLock == 1 {
 		skv.shardLockChans[shard] = make(chan int)
 		go skv.watchShardLock(shard, format, a...)
 	}
 }
 
 func (skv *ShardKV) unlockShard(shard int) {
-	if WatchLock == 1 {
+	if watchLock == 1 {
 		skv.shardLockChans[shard] <- 1
 	}
 	skv.shardLocks[shard].Unlock()
@@ -72,7 +72,7 @@ func (skv *ShardKV) watchShardLock(shard int, format string, a ...interface{}) {
 		case <-time.After(5 * time.Second):
 			votedFor := int(skv.rf.GetVotedFor())
 			prefix := fmt.Sprintf("ShardLock: Group: %v, ShardKVServer: %v, Shard: %v ", skv.gid, skv.me, shard)
-			if votedFor == skv.me || FollowerDebug {
+			if votedFor == skv.me || followerDebug {
 				log.Printf(prefix+"ShardKV testLock(): "+format+" is not unlocked\n", a...)
 			}
 		}
@@ -81,7 +81,7 @@ func (skv *ShardKV) watchShardLock(shard int, format string, a ...interface{}) {
 
 // can't disable follower
 func (skv *ShardKV) printStateForTest(msg string) {
-	if TestDebug {
+	if testDebug {
 		fmt.Printf(msg+`
 		Group: %v, \n
 		ShardKVServer: %v, \n
@@ -150,10 +150,10 @@ func (skv *ShardKV) logFatal(format string, a ...interface{}) {
 }
 
 func (skv *ShardKV) tempDPrintf(format string, a ...interface{}) (n int, err error) {
-	if TempDebug {
+	if tempDebug {
 		votedFor := int(skv.rf.GetVotedFor())
 		prefix := fmt.Sprintf("Group: %v, ShardKVServer: %v, ", skv.gid, skv.me)
-		if votedFor == skv.me || FollowerDebug {
+		if votedFor == skv.me || followerDebug {
 			log.Printf(prefix+format, a...)
 		}
 	}
@@ -161,10 +161,10 @@ func (skv *ShardKV) tempDPrintf(format string, a ...interface{}) (n int, err err
 }
 
 func (skv *ShardKV) transmitSenderDPrintf(format string, a ...interface{}) (n int, err error) {
-	if TransmitSenderDebug {
+	if transmitSenderDebug {
 		votedFor := int(skv.rf.GetVotedFor())
 		prefix := fmt.Sprintf("ShardKVServer: %v, Group: %v, ", skv.gid, skv.me)
-		if votedFor == skv.me || FollowerDebug {
+		if votedFor == skv.me || followerDebug {
 			log.Printf(prefix+format, a...)
 		}
 	}
@@ -172,10 +172,10 @@ func (skv *ShardKV) transmitSenderDPrintf(format string, a ...interface{}) (n in
 }
 
 func (skv *ShardKV) transmitHandlerDPrintf(format string, a ...interface{}) (n int, err error) {
-	if TransmitHandlerDebug {
+	if transmitHandlerDebug {
 		votedFor := int(skv.rf.GetVotedFor())
 		prefix := fmt.Sprintf("ShardKVServer: %v, Group: %v, ", skv.gid, skv.me)
-		if votedFor == skv.me || FollowerDebug {
+		if votedFor == skv.me || followerDebug {
 			log.Printf(prefix+format, a...)
 		}
 	}
@@ -183,25 +183,25 @@ func (skv *ShardKV) transmitHandlerDPrintf(format string, a ...interface{}) (n i
 }
 
 func (skv *ShardKV) moveShardDPrintf(format string, a ...interface{}) (n int, err error) {
-	if MoveShardDebug {
+	if moveShardDebug {
 		votedFor := int(skv.rf.GetVotedFor())
 		prefix := fmt.Sprintf("ShardKVServer: %v, Group: %v, ", skv.gid, skv.me)
-		if votedFor == skv.me || FollowerDebug {
+		if votedFor == skv.me || followerDebug {
 			log.Printf(prefix+format, a...)
 		}
 	}
 	return
 }
 
-func TempDPrintf(format string, a ...interface{}) (n int, err error) {
-	if TempDebug {
+func tempDPrintf(format string, a ...interface{}) (n int, err error) {
+	if tempDebug {
 		log.Printf(format, a...)
 	}
 	return
 }
 
-func Temp2DPrintf(format string, a ...interface{}) (n int, err error) {
-	if Temp2Debug {
+func temp2DPrintf(format string, a ...interface{}) (n int, err error) {
+	if temp2Debug {
 		log.Printf(format, a...)
 	}
 	return

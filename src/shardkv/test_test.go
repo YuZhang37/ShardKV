@@ -103,9 +103,9 @@ func TestJoinLeave(t *testing.T) {
 
 	ck := cfg.makeClient()
 
-	Temp2DPrintf("before cfg.join(0)")
+	temp2DPrintf("before cfg.join(0)")
 	cfg.join(0)
-	Temp2DPrintf("after cfg.join(0)")
+	temp2DPrintf("after cfg.join(0)")
 
 	n := 10
 	ka := make([]string, n)
@@ -119,9 +119,9 @@ func TestJoinLeave(t *testing.T) {
 		check(t, ck, ka[i], va[i])
 	}
 
-	Temp2DPrintf("before cfg.join(1)")
+	temp2DPrintf("before cfg.join(1)")
 	cfg.join(1)
-	Temp2DPrintf("after cfg.join(1)")
+	temp2DPrintf("after cfg.join(1)")
 
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
@@ -130,12 +130,12 @@ func TestJoinLeave(t *testing.T) {
 		va[i] += x
 	}
 
-	Temp2DPrintf("before cfg.leave(0)")
+	temp2DPrintf("before cfg.leave(0)")
 	cfg.leave(0)
-	Temp2DPrintf("after cfg.leave(0)")
+	temp2DPrintf("after cfg.leave(0)")
 
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("check i: %v, ka[i] %v: va[i] %v\n", i, ka[i], va[i])
+		temp2DPrintf("check i: %v, ka[i] %v: va[i] %v\n", i, ka[i], va[i])
 		check(t, ck, ka[i], va[i])
 		x := randstring(5)
 		ck.Append(ka[i], x)
@@ -144,7 +144,7 @@ func TestJoinLeave(t *testing.T) {
 
 	// allow time for shards to transfer.
 	time.Sleep(1 * time.Second)
-	Temp2DPrintf("time.Sleep(1 * time.Second)")
+	temp2DPrintf("time.Sleep(1 * time.Second)")
 
 	cfg.checklogs()
 	cfg.ShutdownGroup(0)
@@ -164,7 +164,7 @@ func TestJoinJoinLeave(t *testing.T) {
 
 	ck := cfg.makeClient()
 
-	Temp2DPrintf("before cfg.join(0)\n")
+	temp2DPrintf("before cfg.join(0)\n")
 	cfg.join(0)
 
 	n := 30
@@ -176,18 +176,18 @@ func TestJoinJoinLeave(t *testing.T) {
 		ck.Put(ka[i], va[i])
 	}
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("1 check i: %v\n", i)
+		temp2DPrintf("1 check i: %v\n", i)
 		check(t, ck, ka[i], va[i])
 	}
-	Temp2DPrintf("before cfg.join(1)\n")
+	temp2DPrintf("before cfg.join(1)\n")
 	cfg.join(1)
-	Temp2DPrintf("before cfg.join(2)\n")
+	temp2DPrintf("before cfg.join(2)\n")
 	cfg.join(2)
-	Temp2DPrintf("before cfg.leave(0)\n")
+	temp2DPrintf("before cfg.leave(0)\n")
 	cfg.leave(0)
 
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("2 before append i: %v\n", i)
+		temp2DPrintf("2 before append i: %v\n", i)
 		check(t, ck, ka[i], va[i])
 		x := randstring(20)
 		ck.Append(ka[i], x)
@@ -195,14 +195,14 @@ func TestJoinJoinLeave(t *testing.T) {
 	}
 
 	time.Sleep(1 * time.Second)
-	Temp2DPrintf("1 time.Sleep(1 * time.Second)")
+	temp2DPrintf("1 time.Sleep(1 * time.Second)")
 
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
 	}
 
 	time.Sleep(1 * time.Second)
-	Temp2DPrintf("2 time.Sleep(1 * time.Second)")
+	temp2DPrintf("2 time.Sleep(1 * time.Second)")
 
 	cfg.checklogs()
 
@@ -229,9 +229,9 @@ func TestJoinJoinAndLeaveLeave(t *testing.T) {
 
 	ck := cfg.makeClient()
 
-	Temp2DPrintf("before cfg.join(0)\n")
+	temp2DPrintf("before cfg.join(0)\n")
 	cfg.join(0)
-	Temp2DPrintf("after cfg.join(0)\n")
+	temp2DPrintf("after cfg.join(0)\n")
 
 	n := 30
 	ka := make([]string, n)
@@ -242,31 +242,31 @@ func TestJoinJoinAndLeaveLeave(t *testing.T) {
 		ck.Put(ka[i], va[i])
 	}
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("1 check i: %v\n", i)
+		temp2DPrintf("1 check i: %v\n", i)
 		check(t, ck, ka[i], va[i])
 	}
-	Temp2DPrintf("before cfg.join(1)\n")
+	temp2DPrintf("before cfg.join(1)\n")
 	cfg.join(1)
-	Temp2DPrintf("before cfg.join(2)\n")
+	temp2DPrintf("before cfg.join(2)\n")
 	cfg.join(2)
-	Temp2DPrintf("before cfg.leave(0)\n")
+	temp2DPrintf("before cfg.leave(0)\n")
 	cfg.leave(0)
 
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("2 before append i: %v\n", i)
+		temp2DPrintf("2 before append i: %v\n", i)
 		check(t, ck, ka[i], va[i])
 		x := randstring(20)
 		ck.Append(ka[i], x)
 		va[i] += x
 	}
 
-	Temp2DPrintf("before cfg.leave(1)\n")
+	temp2DPrintf("before cfg.leave(1)\n")
 	cfg.leave(1)
-	Temp2DPrintf("before cfg.join(0)\n")
+	temp2DPrintf("before cfg.join(0)\n")
 	cfg.join(0)
 
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("3 before check i: %v\n", i)
+		temp2DPrintf("3 before check i: %v\n", i)
 		check(t, ck, ka[i], va[i])
 		x := randstring(20)
 		ck.Append(ka[i], x)
@@ -274,14 +274,14 @@ func TestJoinJoinAndLeaveLeave(t *testing.T) {
 	}
 
 	time.Sleep(1 * time.Second)
-	Temp2DPrintf("1 time.Sleep(1 * time.Second)")
+	temp2DPrintf("1 time.Sleep(1 * time.Second)")
 
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
 	}
 
 	time.Sleep(1 * time.Second)
-	Temp2DPrintf("2 time.Sleep(1 * time.Second)")
+	temp2DPrintf("2 time.Sleep(1 * time.Second)")
 
 	cfg.checklogs()
 
@@ -308,9 +308,9 @@ func TestSnapshot(t *testing.T) {
 
 	ck := cfg.makeClient()
 
-	Temp2DPrintf("before cfg.join(0)\n")
+	temp2DPrintf("before cfg.join(0)\n")
 	cfg.join(0)
-	Temp2DPrintf("after cfg.join(0)\n")
+	temp2DPrintf("after cfg.join(0)\n")
 
 	n := 30
 	ka := make([]string, n)
@@ -321,31 +321,31 @@ func TestSnapshot(t *testing.T) {
 		ck.Put(ka[i], va[i])
 	}
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("1 check i: %v\n", i)
+		temp2DPrintf("1 check i: %v\n", i)
 		check(t, ck, ka[i], va[i])
 	}
-	Temp2DPrintf("before cfg.join(1)\n")
+	temp2DPrintf("before cfg.join(1)\n")
 	cfg.join(1)
-	Temp2DPrintf("before cfg.join(2)\n")
+	temp2DPrintf("before cfg.join(2)\n")
 	cfg.join(2)
-	Temp2DPrintf("before cfg.leave(0)\n")
+	temp2DPrintf("before cfg.leave(0)\n")
 	cfg.leave(0)
 
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("2 before append i: %v\n", i)
+		temp2DPrintf("2 before append i: %v\n", i)
 		check(t, ck, ka[i], va[i])
 		x := randstring(20)
 		ck.Append(ka[i], x)
 		va[i] += x
 	}
 
-	Temp2DPrintf("before cfg.leave(1)\n")
+	temp2DPrintf("before cfg.leave(1)\n")
 	cfg.leave(1)
-	Temp2DPrintf("before cfg.join(0)\n")
+	temp2DPrintf("before cfg.join(0)\n")
 	cfg.join(0)
 
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("3 before check i: %v, ka[i]: %v, va[i]: %v\n", i, ka[i], va[i])
+		temp2DPrintf("3 before check i: %v, ka[i]: %v, va[i]: %v\n", i, ka[i], va[i])
 		check(t, ck, ka[i], va[i])
 		x := randstring(20)
 		ck.Append(ka[i], x)
@@ -353,15 +353,15 @@ func TestSnapshot(t *testing.T) {
 	}
 
 	time.Sleep(2 * time.Second)
-	Temp2DPrintf("1 time.Sleep(1 * time.Second)")
+	temp2DPrintf("1 time.Sleep(1 * time.Second)")
 
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("4 before check i: %v, ka[i]: %v, va[i]: %v\n", i, ka[i], va[i])
+		temp2DPrintf("4 before check i: %v, ka[i]: %v, va[i]: %v\n", i, ka[i], va[i])
 		check(t, ck, ka[i], va[i])
 	}
 
 	time.Sleep(1 * time.Second)
-	Temp2DPrintf("2 time.Sleep(1 * time.Second)")
+	temp2DPrintf("2 time.Sleep(1 * time.Second)")
 
 	cfg.checklogs()
 
@@ -369,14 +369,14 @@ func TestSnapshot(t *testing.T) {
 	cfg.ShutdownGroup(1)
 	cfg.ShutdownGroup(2)
 
-	Temp2DPrintf("StartGroup again")
+	temp2DPrintf("StartGroup again")
 
 	cfg.StartGroup(0)
 	cfg.StartGroup(1)
 	cfg.StartGroup(2)
 
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("5 before check i: %v, ka[i]: %v, va[i]: %v\n", i, ka[i], va[i])
+		temp2DPrintf("5 before check i: %v, ka[i]: %v, va[i]: %v\n", i, ka[i], va[i])
 		check(t, ck, ka[i], va[i])
 	}
 
@@ -618,7 +618,7 @@ func TestConcurrent02(t *testing.T) {
 	}
 
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("1 check i: %v, ka[i]: %v, va[i]: %v\n", i, ka[i], va[i])
+		temp2DPrintf("1 check i: %v, ka[i]: %v, va[i]: %v\n", i, ka[i], va[i])
 		check(t, ck, ka[i], va[i])
 	}
 
@@ -840,7 +840,7 @@ func TestUnreliable2(t *testing.T) {
 	ch := make(chan bool)
 
 	ff := func(i int) {
-		Temp2DPrintf("TestUnreliable: make client for %v\n", i)
+		temp2DPrintf("TestUnreliable: make client for %v\n", i)
 		defer func() { ch <- true }()
 		ck1 := cfg.makeClient()
 		for atomic.LoadInt32(&done) == 0 {
@@ -848,10 +848,10 @@ func TestUnreliable2(t *testing.T) {
 			ck1.Append(ka[i], x)
 			va[i] += x
 		}
-		Temp2DPrintf("TestUnreliable: finish client for %v\n", i)
+		temp2DPrintf("TestUnreliable: finish client for %v\n", i)
 	}
 
-	Temp2DPrintf("TestUnreliable: create concurrent clients\n")
+	temp2DPrintf("TestUnreliable: create concurrent clients\n")
 	for i := 0; i < n; i++ {
 		go ff(i)
 	}
@@ -869,17 +869,17 @@ func TestUnreliable2(t *testing.T) {
 	cfg.join(0)
 
 	time.Sleep(2 * time.Second)
-	Temp2DPrintf("TestUnreliable: config changes\n")
+	temp2DPrintf("TestUnreliable: config changes\n")
 	atomic.StoreInt32(&done, 1)
 	cfg.net.Reliable(true)
-	Temp2DPrintf("TestUnreliable: set reliable\n")
+	temp2DPrintf("TestUnreliable: set reliable\n")
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("TestUnreliable: wait i: %v\n", i)
+		temp2DPrintf("TestUnreliable: wait i: %v\n", i)
 		<-ch
 	}
-	Temp2DPrintf("TestUnreliable: checking\n")
+	temp2DPrintf("TestUnreliable: checking\n")
 	for i := 0; i < n; i++ {
-		Temp2DPrintf("TestUnreliable: check i: %v\n", i)
+		temp2DPrintf("TestUnreliable: check i: %v\n", i)
 		check(t, ck, ka[i], va[i])
 	}
 
@@ -1071,7 +1071,7 @@ func TestChallenge1Delete(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		check(t, ck, ka[i], va[i])
 	}
-	Temp2DPrintf("TEST CASE: \n")
+	temp2DPrintf("TEST CASE: \n")
 	total := 0
 	for gi := 0; gi < cfg.ngroups; gi++ {
 		for i := 0; i < cfg.n; i++ {
@@ -1096,7 +1096,7 @@ func TestChallenge1Delete(t *testing.T) {
 	if total > expected {
 		t.Fatalf("snapshot + persisted Raft state are too big: %v > %v\n", total, expected)
 	}
-	Temp2DPrintf("snapshot + persisted Raft state not too big: %v < %v\n", total, expected)
+	temp2DPrintf("snapshot + persisted Raft state not too big: %v < %v\n", total, expected)
 	fmt.Printf("  ... Passed\n")
 }
 
@@ -1132,12 +1132,12 @@ func TestChallenge2Unaffected(t *testing.T) {
 
 	// QUERY to find shards now owned by 101
 	c := cfg.mck.Query(-1)
-	Temp2DPrintf("cfg.mck.Query(-1): %v\n", c)
+	temp2DPrintf("cfg.mck.Query(-1): %v\n", c)
 	owned := make(map[int]bool, n)
 	for s, gid := range c.Shards {
 		owned[s] = gid == cfg.groups[1].gid
 	}
-	Temp2DPrintf("Got owned: %v\n", owned)
+	temp2DPrintf("Got owned: %v\n", owned)
 
 	// Wait for migration to new config to complete, and for clients to
 	// start using this updated config. Gets to any key k such that
@@ -1164,7 +1164,7 @@ func TestChallenge2Unaffected(t *testing.T) {
 	for i := 0; i < n; i++ {
 		shard := key2shard(ka[i]) % 10
 		if owned[shard] {
-			Temp2DPrintf("check owned[shard]: %v\n", shard)
+			temp2DPrintf("check owned[shard]: %v\n", shard)
 			check(t, ck, ka[i], va[i])
 			ck.Put(ka[i], va[i]+"-1")
 			check(t, ck, ka[i], va[i]+"-1")
